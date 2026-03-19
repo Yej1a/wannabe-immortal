@@ -363,6 +363,66 @@ canvas {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.03));
 }
 
+.dao-pointify-summary .summary-value {
+  font-size: 18px;
+  line-height: 1.4;
+}
+
+.dao-pointify-note {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.ending-modal {
+  width: min(820px, 100%);
+  text-align: center;
+  overflow: hidden;
+}
+
+.ending-immortal {
+  background:
+    radial-gradient(circle at top, rgba(241, 234, 211, 0.28), transparent 42%),
+    linear-gradient(180deg, rgba(23, 33, 48, 0.98), rgba(10, 17, 29, 0.98));
+  border-color: rgba(241, 234, 211, 0.3);
+}
+
+.ending-demon {
+  background:
+    radial-gradient(circle at top, rgba(127, 74, 108, 0.28), transparent 40%),
+    linear-gradient(180deg, rgba(31, 12, 20, 0.98), rgba(13, 10, 18, 0.98));
+  border-color: rgba(182, 88, 122, 0.3);
+}
+
+.ending-human {
+  background:
+    radial-gradient(circle at top, rgba(124, 224, 184, 0.2), transparent 40%),
+    linear-gradient(180deg, rgba(21, 29, 31, 0.98), rgba(10, 15, 18, 0.98));
+  border-color: rgba(124, 224, 184, 0.26);
+}
+
+.ending-hero {
+  padding: 28px 12px 12px;
+}
+
+.ending-result {
+  font-size: 42px;
+  font-weight: 700;
+  color: var(--gold);
+  margin-bottom: 14px;
+}
+
+.ending-copy {
+  color: var(--muted);
+  line-height: 1.8;
+  margin-bottom: 6px;
+}
+
 @media (max-width: 1120px) {
   .game-layout {
     grid-template-columns: 1fr;

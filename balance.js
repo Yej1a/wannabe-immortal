@@ -2,7 +2,7 @@
 // Modify values here, save the file, then refresh the page to test changes.
 window.GAME_BALANCE = {
   playerTable: {
-    maxHp: 120,
+    maxHp: 1000,
     speed: 220,
     critChance: 0.05,
     critDamage: 1.5,
@@ -69,10 +69,10 @@ window.GAME_BALANCE = {
   monsterTable: {
     grunt: {
       name: "小妖",
-      hp: 34,
+      hp: 46,
       damage: 11,
       speed: 84,
-      radius: 14,
+      radius: 13,
       xp: 4,
       orb: 4,
       meleeCooldown: 0.42,
@@ -80,10 +80,10 @@ window.GAME_BALANCE = {
 
     charger: {
       name: "冲锋鬼",
-      hp: 52,
+      hp: 58,
       damage: 16,
       speed: 108,
-      radius: 15,
+      radius: 18,
       xp: 6,
       orb: 6,
       meleeCooldown: 0.55,
@@ -93,10 +93,10 @@ window.GAME_BALANCE = {
 
     ranged: {
       name: "远程灵体",
-      hp: 32,
+      hp: 44,
       damage: 13,
       speed: 62,
-      radius: 13,
+      radius: 12,
       xp: 5,
       orb: 5,
       meleeCooldown: 0.5,
@@ -107,10 +107,10 @@ window.GAME_BALANCE = {
 
     elite: {
       name: "精英护法",
-      hp: 240,
+      hp: 108,
       damage: 24,
       speed: 76,
-      radius: 20,
+      radius: 28,
       xp: 20,
       orb: 18,
       meleeCooldown: 0.68,

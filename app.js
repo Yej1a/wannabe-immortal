@@ -73,12 +73,26 @@ const DESTINY_SLOT_CAP = 4;
 const RESULT_DEATH = "death";
 const RESULT_CLEAR = "clear";
 const ACTIVE_UNLOCK_RANK = 6;
+const HUMAN_ENDING_DESTINY_ID = "lotus";
+const DAO_POINTIFY_WEIGHTS = {
+  white: [
+    { value: "white", weight: 94 },
+    { value: "mixed", weight: 4 },
+    { value: "black", weight: 2 },
+  ],
+  black: [
+    { value: "black", weight: 94 },
+    { value: "mixed", weight: 4 },
+    { value: "white", weight: 2 },
+  ],
+};
 
 const destinyCatalog = {
   vital: {
     id: "vital",
     name: "命元诀",
     tier: "common",
+    alignment: "white",
     category: "combat",
     baseCost: 8,
     maxLevel: 3,
@@ -86,13 +100,14 @@ const destinyCatalog = {
     text: {
       white: "提升最大生命与回复。",
       black: "提升伤害。",
-      neutral: "提升拾取范围。",
+      mixed: "提升拾取范围。",
     },
   },
   spirit: {
     id: "spirit",
     name: "聚灵印",
     tier: "common",
+    alignment: "white",
     category: "support",
     baseCost: 8,
     maxLevel: 3,
@@ -100,13 +115,14 @@ const destinyCatalog = {
     text: {
       white: "提升经验获取。",
       black: "提升暴击率。",
-      neutral: "提升移动速度。",
+      mixed: "提升移动速度。",
     },
   },
   river: {
     id: "river",
     name: "归元息",
     tier: "common",
+    alignment: "mixed",
     category: "support",
     baseCost: 8,
     maxLevel: 3,
@@ -114,13 +130,14 @@ const destinyCatalog = {
     text: {
       white: "提升白槽获取。",
       black: "提升黑槽获取。",
-      neutral: "同时微量提升黑白槽获取。",
+      mixed: "同时微量提升黑白槽获取。",
     },
   },
   blade: {
     id: "blade",
     name: "剑意骨",
     tier: "true",
+    alignment: "black",
     category: "combat",
     baseCost: 20,
     maxLevel: 3,
@@ -128,13 +145,14 @@ const destinyCatalog = {
     text: {
       white: "提升护体与减伤。",
       black: "提升暴伤与输出。",
-      neutral: "少量提升冷却效率。",
+      mixed: "少量提升冷却效率。",
     },
   },
   thunder: {
     id: "thunder",
     name: "惊雷纹",
     tier: "true",
+    alignment: "black",
     category: "combat",
     baseCost: 20,
     maxLevel: 3,
@@ -142,13 +160,14 @@ const destinyCatalog = {
     text: {
       white: "提升回复与经验。",
       black: "提升伤害与施法频率。",
-      neutral: "提升移动速度与拾取。",
+      mixed: "提升移动速度与拾取。",
     },
   },
   ward: {
     id: "ward",
     name: "护命符",
     tier: "true",
+    alignment: "white",
     category: "support",
     baseCost: 20,
     maxLevel: 3,
@@ -156,13 +175,14 @@ const destinyCatalog = {
     text: {
       white: "提升最大生命与白道收益。",
       black: "提升暴击与黑道收益。",
-      neutral: "提升基础增伤。",
+      mixed: "提升基础增伤。",
     },
   },
   reaper: {
     id: "reaper",
     name: "修罗契",
     tier: "fate",
+    alignment: "black",
     category: "combat",
     baseCost: 42,
     maxLevel: 3,
@@ -170,13 +190,14 @@ const destinyCatalog = {
     text: {
       white: "高额提升生存。",
       black: "高额提升伤害与暴击。",
-      neutral: "均衡提升输出与资源。",
+      mixed: "均衡提升输出与资源。",
     },
   },
   lotus: {
     id: "lotus",
     name: "净世莲",
     tier: "fate",
+    alignment: "mixed",
     category: "support",
     baseCost: 42,
     maxLevel: 3,
@@ -184,7 +205,7 @@ const destinyCatalog = {
     text: {
       white: "高额提升回复与经验。",
       black: "高额提升黑槽与爆发。",
-      neutral: "高额提升移动与拾取。",
+      mixed: "高额提升移动与拾取。",
     },
   },
 };
@@ -216,7 +237,7 @@ const skills = {
     name: "掌心雷",
     description: "对最近敌人施加落雷，可连锁。",
     baseCooldown: 1.4,
-    baseDamage: 40,
+    baseDamage: 28,
     splash: 54,
   },
   flame: {
@@ -225,7 +246,7 @@ const skills = {
     description: "环身火域持续灼烧近身敌人。",
     radius: 90,
     tick: 0.5,
-    damage: 12,
+    damage: 22,
   },
   guard: {
     id: "guard",
@@ -237,10 +258,10 @@ const skills = {
 };
 
 const activeSkillTable = {
-  sword: { baseCooldown: 18 },
-  thunder: { baseCooldown: 16 },
-  guard: { baseCooldown: 18 },
-  flame: { baseCooldown: 20 },
+  sword: { baseCooldown: 3 },
+  thunder: { baseCooldown: 3 },
+  guard: { baseCooldown: 3 },
+  flame: { baseCooldown: 3 },
 };
 
 const enemies = BALANCE.monsterTable;
@@ -275,6 +296,7 @@ function saveMetaState() {
 }
 
 const metaState = loadMetaState();
+let pendingInfusionContinuation = null;
 
 function ensureMetaCollections() {
   if (!metaState.destiny) metaState.destiny = { owned: {}, equipped: [], maxSlots: DESTINY_SLOT_CAP };
@@ -295,32 +317,37 @@ function getEquippedDestinyEntries() {
     .filter(Boolean);
 }
 
-function getPolarityCounts() {
-  const counts = { white: 0, black: 0, neutral: 0 };
+function getUnequippedOwnedDestinyEntries() {
+  const equippedSet = new Set(metaState.destiny.equipped);
+  return getOwnedDestinyEntries().filter((entry) => !equippedSet.has(entry.id));
+}
+
+function getAlignmentCounts() {
+  const counts = { white: 0, black: 0, mixed: 0 };
   getEquippedDestinyEntries().forEach((entry) => {
-    counts[entry.currentPolarity || "neutral"] += 1;
+    counts[entry.def.alignment || "mixed"] += 1;
   });
   return counts;
 }
 
 function getAlignmentResult() {
-  if (state.whitePath.value === state.blackPath.value) {
-    const counts = getPolarityCounts();
-    if (counts.black > counts.white) return "鍖栭瓟";
-    return "鎴愪粰";
-  }
-  return state.whitePath.value > state.blackPath.value ? "鎴愪粰" : "鍖栭瓟";
+  const counts = getAlignmentCounts();
+  const hasHumanEnding = getEquippedDestinyEntries().some((entry) => entry.id === HUMAN_ENDING_DESTINY_ID);
+  if (hasHumanEnding) return "成人（Be Human）";
+  if (counts.white > counts.black) return "成仙";
+  if (counts.black > counts.white) return "化魔";
+  if (state.whitePath.value > state.blackPath.value) return "成仙";
+  if (state.blackPath.value > state.whitePath.value) return "化魔";
+  return "成仙";
 }
 
-function getDestinyWeight(polarity) {
-  let weight = polarity === "neutral" ? 0.9 : 1;
-  const counts = getPolarityCounts();
-  if (polarity === "white" && state.whitePath.full) weight *= 1.1;
-  if (polarity === "black" && state.blackPath.full) weight *= 1.1;
-  if (polarity === "white" && counts.white >= 2) weight *= 1.25;
-  if (polarity === "black" && counts.black >= 2) weight *= 1.25;
-  if (polarity === "white" && counts.white >= 4) weight *= 1.6;
-  if (polarity === "black" && counts.black >= 4) weight *= 1.6;
+function getDestinyWeight(alignment) {
+  let weight = alignment === "mixed" ? 0.9 : 1;
+  const counts = getAlignmentCounts();
+  if (alignment === "white" && counts.white >= 2) weight *= 1.25;
+  if (alignment === "black" && counts.black >= 2) weight *= 1.25;
+  if (alignment === "white" && counts.white >= 4) weight *= 1.6;
+  if (alignment === "black" && counts.black >= 4) weight *= 1.6;
   return weight;
 }
 
@@ -334,14 +361,6 @@ function weightedPick(items) {
   return items[items.length - 1].value;
 }
 
-function rollDestinyPolarity() {
-  return weightedPick([
-    { value: "white", weight: getDestinyWeight("white") },
-    { value: "black", weight: getDestinyWeight("black") },
-    { value: "neutral", weight: getDestinyWeight("neutral") },
-  ]);
-}
-
 function getMissingDestinyIds() {
   return Object.keys(destinyCatalog).filter((id) => !metaState.destiny.owned[id]);
 }
@@ -350,62 +369,79 @@ function getRandomDestinyOffers(count = 3) {
   const pool = getMissingDestinyIds();
   const offers = [];
   while (pool.length > 0 && offers.length < count) {
-    const index = Math.floor(Math.random() * pool.length);
-    const id = pool.splice(index, 1)[0];
-    offers.push({ id, polarity: rollDestinyPolarity() });
+    const id = weightedPick(
+      pool.map((destinyId) => ({
+        value: destinyId,
+        weight: getDestinyWeight(destinyCatalog[destinyId].alignment),
+      })),
+    );
+    pool.splice(pool.indexOf(id), 1);
+    offers.push({ id });
   }
   return offers;
 }
 
-function describeDestiny(id, polarity, level = 1) {
+function describeDestiny(id, alignment = destinyCatalog[id].alignment, level = 1) {
   const def = destinyCatalog[id];
-  return `${def.name} [${polarity}] Lv.${level} - ${def.text[polarity]}`;
+  return `${def.name} [${alignment}] Lv.${level} - ${def.text[alignment]}`;
+}
+
+function getAlignmentLabel(alignment) {
+  if (alignment === "white") return "白道";
+  if (alignment === "black") return "黑道";
+  return "混元";
+}
+
+function getDaoPointifyDistributionText(color) {
+  return color === "white"
+    ? "白道 94% / 混元 4% / 黑道 2%"
+    : "黑道 94% / 混元 4% / 白道 2%";
 }
 
 function formatResultLabel(result) {
   if (result === RESULT_DEATH) return "陨落";
-  if (result === RESULT_CLEAR) return "閫氬叧";
+  if (result === RESULT_CLEAR) return "通关";
   return result;
 }
 
 function applyDestinyBonuses(player, mods) {
   getEquippedDestinyEntries().forEach((entry) => {
     const level = entry.level || 1;
-    const polarity = entry.currentPolarity || "neutral";
+    const alignment = entry.def.alignment || "mixed";
     switch (entry.id) {
       case "vital":
-        if (polarity === "white") {
+        if (alignment === "white") {
           player.maxHp += 18 * level;
           player.regen += 0.08 * level;
-        } else if (polarity === "black") {
+        } else if (alignment === "black") {
           mods.damageMult += 0.06 * level;
         } else {
           player.pickupRange += 10 * level;
         }
         break;
       case "spirit":
-        if (polarity === "white") mods.xpGainMult += 0.1 * level;
-        else if (polarity === "black") player.critChance += 0.04 * level;
+        if (alignment === "white") mods.xpGainMult += 0.1 * level;
+        else if (alignment === "black") player.critChance += 0.04 * level;
         else player.speed += 10 * level;
         break;
       case "river":
-        if (polarity === "white") mods.whiteGainMult += 0.12 * level;
-        else if (polarity === "black") mods.blackGainMult += 0.12 * level;
+        if (alignment === "white") mods.whiteGainMult += 0.12 * level;
+        else if (alignment === "black") mods.blackGainMult += 0.12 * level;
         else {
           mods.whiteGainMult += 0.05 * level;
           mods.blackGainMult += 0.05 * level;
         }
         break;
       case "blade":
-        if (polarity === "white") mods.incomingMult *= Math.max(0.65, 1 - 0.08 * level);
-        else if (polarity === "black") player.critDamage += 0.18 * level;
+        if (alignment === "white") mods.incomingMult *= Math.max(0.65, 1 - 0.08 * level);
+        else if (alignment === "black") player.critDamage += 0.18 * level;
         else player.globalCooldown *= Math.max(0.75, 1 - 0.06 * level);
         break;
       case "thunder":
-        if (polarity === "white") {
+        if (alignment === "white") {
           player.regen += 0.06 * level;
           mods.xpGainMult += 0.06 * level;
-        } else if (polarity === "black") {
+        } else if (alignment === "black") {
           mods.damageMult += 0.05 * level;
           player.globalCooldown *= Math.max(0.72, 1 - 0.05 * level);
         } else {
@@ -414,10 +450,10 @@ function applyDestinyBonuses(player, mods) {
         }
         break;
       case "ward":
-        if (polarity === "white") {
+        if (alignment === "white") {
           player.maxHp += 14 * level;
           mods.whiteGainMult += 0.08 * level;
-        } else if (polarity === "black") {
+        } else if (alignment === "black") {
           player.critChance += 0.03 * level;
           mods.blackGainMult += 0.08 * level;
         } else {
@@ -425,10 +461,10 @@ function applyDestinyBonuses(player, mods) {
         }
         break;
       case "reaper":
-        if (polarity === "white") {
+        if (alignment === "white") {
           player.maxHp += 24 * level;
           player.regen += 0.1 * level;
-        } else if (polarity === "black") {
+        } else if (alignment === "black") {
           mods.damageMult += 0.1 * level;
           player.critChance += 0.04 * level;
         } else {
@@ -437,10 +473,10 @@ function applyDestinyBonuses(player, mods) {
         }
         break;
       case "lotus":
-        if (polarity === "white") {
+        if (alignment === "white") {
           mods.xpGainMult += 0.14 * level;
           player.regen += 0.1 * level;
-        } else if (polarity === "black") {
+        } else if (alignment === "black") {
           mods.blackGainMult += 0.14 * level;
           mods.damageMult += 0.06 * level;
         } else {
@@ -521,7 +557,7 @@ function createState() {
     blackGainMult,
     whitePath: makePathState("white"),
     blackPath: makePathState("black"),
-    phaseLabel: "寰呭紑濮?",
+    phaseLabel: "待开始",
     currentModal: null,
     pendingLevelUps: 0,
     statuses: [],
@@ -529,8 +565,8 @@ function createState() {
     modalOptions: null,
     campaign: createCampaignState(),
     currentDestinyOffers: [],
-    pendingPolarityColor: null,
     lastRunPoints: 0,
+    pendingMiniBossReward: false,
   };
 }
 
@@ -774,6 +810,7 @@ function advanceCampaign() {
   if (state.campaign.stageIndex < STAGES_PER_RUN) {
     state.campaign.stageIndex += 1;
     startCurrentStage();
+    maybeOpenPendingLevelUp();
     return;
   }
   openRunShopModal(false, `第${state.campaign.runIndex}轮已破，道途又进了一步。`);
@@ -811,13 +848,25 @@ function saveAndRefreshShop(message = "") {
   openRunShopModal(!!state.pendingShopResult, message || state.pendingShopMessage || "");
 }
 
-function acquireDestiny(id, polarity) {
+function continueInfusionFlow() {
+  const continuation = pendingInfusionContinuation;
+  pendingInfusionContinuation = null;
+  if (typeof continuation === "function") continuation();
+}
+
+function maybeHandlePostBossInfusion(continuation) {
+  if (state.whitePath.full || state.blackPath.full) {
+    openDaoPointifyModal(continuation);
+    return true;
+  }
+  continuation();
+  return false;
+}
+
+function acquireDestiny(id) {
   if (metaState.destiny.owned[id]) return;
   metaState.destiny.owned[id] = {
     level: 1,
-    basePolarity: polarity,
-    currentPolarity: polarity,
-    polarityLocked: polarity !== "neutral",
   };
   if (metaState.destiny.equipped.length < metaState.destiny.maxSlots) {
     metaState.destiny.equipped.push(id);
@@ -860,67 +909,131 @@ function openEquipDestinyModal(newId) {
   });
 }
 
-function openPolarityInfusionModal() {
+function rollDaoPointifyAlignment(color, availableAlignments) {
+  const table = DAO_POINTIFY_WEIGHTS[color] || DAO_POINTIFY_WEIGHTS.white;
+  const filtered = table.filter((entry) => availableAlignments.includes(entry.value));
+  if (!filtered.length) return availableAlignments[0] || "mixed";
+  return weightedPick(filtered);
+}
+
+function pointifyDestiny(targetId, color) {
+  const entry = metaState.destiny.owned[targetId];
+  if (!entry) return;
+  const poolIds = Object.keys(destinyCatalog).filter((id) => id === targetId || !metaState.destiny.owned[id]);
+  const availableAlignments = [...new Set(poolIds.map((id) => destinyCatalog[id].alignment))];
+  const nextAlignment = rollDaoPointifyAlignment(color, availableAlignments);
+  const candidateIds = poolIds.filter((id) => destinyCatalog[id].alignment === nextAlignment);
+  const nextId = candidateIds[Math.floor(Math.random() * candidateIds.length)] || targetId;
+  delete metaState.destiny.owned[targetId];
+  metaState.destiny.owned[nextId] = { level: entry.level || 1 };
+  if (color === "white") {
+    state.whitePath.value = 0;
+    state.whitePath.full = false;
+  } else {
+    state.blackPath.value = 0;
+    state.blackPath.full = false;
+  }
+  saveMetaState();
+  closeModal();
+  state.paused = false;
+  setToast(`道途点化：${destinyCatalog[targetId].name} -> ${destinyCatalog[nextId].name}`);
+  continueInfusionFlow();
+}
+
+function openDaoPointifyModal(continuation = null) {
+  if (continuation) pendingInfusionContinuation = continuation;
+  const targets = getUnequippedOwnedDestinyEntries();
+  if (!targets.length) {
+    setToast("暂无未装配命格可供点化，本次机会保留。");
+    continueInfusionFlow();
+    return;
+  }
   const choices = [];
   if (state.whitePath.full) {
     choices.push({
-      title: "白意改命",
-      body: "将一枚已拥有命格定为白道，并清空白槽。",
-      onClick: () => openPolarityTargetModal("white"),
+      title: "白道点化",
+      body: "重铸一枚未装配命格，结果以白道为主：白道 94% / 混元 4% / 黑道 2%。",
+      onClick: () => openDaoPointifyTargetModal("white"),
     });
   }
   if (state.blackPath.full) {
     choices.push({
-      title: "黑念改命",
-      body: "将一枚已拥有命格定为黑道，并清空黑槽。",
-      onClick: () => openPolarityTargetModal("black"),
+      title: "黑道点化",
+      body: "重铸一枚未装配命格，结果以黑道为主：黑道 94% / 混元 4% / 白道 2%。",
+      onClick: () => openDaoPointifyTargetModal("black"),
     });
   }
-  if (!choices.length || !getOwnedDestinyEntries().length) {
-    openStageDestinyOffer();
+  if (!choices.length) {
+    continueInfusionFlow();
     return;
   }
   state.paused = true;
-  state.currentModal = "polarity-infuse";
+  state.currentModal = "dao-pointify";
   renderModal({
-    title: "命格改道",
-    body: "黑白槽已满，可以改写一枚命格的当前道性。",
+    title: "道途点化",
+    body: "仅在关后结算时触发。选择白道或黑道点化一枚未装配命格，也可以暂时保留黑白槽。",
+    bodyHtml: `
+      <div class="reincarnation-summary dao-pointify-summary">
+        <div class="summary-card">
+          <div class="summary-label">可点化目标</div>
+          <div class="summary-value">${targets.length}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">白槽状态</div>
+          <div class="summary-value">${state.whitePath.full ? "可点化" : "未满"}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">黑槽状态</div>
+          <div class="summary-value">${state.blackPath.full ? "可点化" : "未满"}</div>
+        </div>
+      </div>
+      <div class="dao-pointify-note">点化会将所选未装配命格放回命格池，并按对应颜色倾向随机重抽；点化后保留原等级。</div>
+    `,
     choices,
+    className: "reincarnation-modal dao-pointify-modal",
     actions: [{
-      label: "稍后再说",
+      label: "暂不点化",
       onClick: () => {
         closeModal();
         state.paused = false;
-        openStageDestinyOffer();
+        continueInfusionFlow();
       },
     }],
   });
 }
 
-function openPolarityTargetModal(color) {
-  state.pendingPolarityColor = color;
+function openDaoPointifyTargetModal(color) {
+  const targetEntries = getUnequippedOwnedDestinyEntries();
   renderModal({
-    title: color === "white" ? "白意灌注" : "黑念灌注",
-    body: "选择一枚已拥有命格，改写其当前道性。",
-    choices: getOwnedDestinyEntries().map((entry) => ({
-      title: `${entry.def.name} [${entry.currentPolarity}]`,
-      body: `改写为${color === "white" ? "白道" : "黑道"}`,
-      onClick: () => {
-        metaState.destiny.owned[entry.id].currentPolarity = color;
-        metaState.destiny.owned[entry.id].polarityLocked = true;
-        if (color === "white") {
-          state.whitePath.value = 0;
-          state.whitePath.full = false;
-        } else {
-          state.blackPath.value = 0;
-          state.blackPath.full = false;
-        }
-        saveMetaState();
-        closeModal();
-        state.paused = false;
-        openStageDestinyOffer();
-      },
+    title: color === "white" ? "白道点化目标" : "黑道点化目标",
+    body: "选择一枚未装配命格，将其放回命格池后按对应颜色进行重抽。",
+    bodyHtml: `
+      <div class="reincarnation-summary dao-pointify-summary">
+        <div class="summary-card">
+          <div class="summary-label">重抽倾向</div>
+          <div class="summary-value">${color === "white" ? "偏白" : "偏黑"}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">点化概率</div>
+          <div class="summary-value">${getDaoPointifyDistributionText(color)}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">等级保留</div>
+          <div class="summary-value">是</div>
+        </div>
+      </div>
+      <div class="dao-pointify-note">当前目标是你点击的那枚未装配命格。点化后会保留该命格的等级，再替换成新的命格结果。</div>
+    `,
+    choices: targetEntries.map((entry) => ({
+      title: `${entry.def.name} [${getAlignmentLabel(entry.def.alignment)}]`,
+      body: `当前目标 | 当前阵营 ${getAlignmentLabel(entry.def.alignment)} | 当前等级 Lv.${entry.level} | 重抽倾向 ${getDaoPointifyDistributionText(color)} | 保留等级：是`,
+      onClick: () => pointifyDestiny(entry.id, color),
     })),
+    className: "reincarnation-modal dao-pointify-modal",
+    actions: [{
+      label: "返回上一步",
+      onClick: () => openDaoPointifyModal(),
+    }],
   });
 }
 
@@ -937,12 +1050,12 @@ function openStageDestinyOffer() {
     title: "道途进了一步",
     body: "击败小关首领后，从三枚命格中择一永久收入命盘。",
     choices: offers.map((offer) => ({
-      title: `${destinyCatalog[offer.id].name} [${offer.polarity}]`,
-      body: destinyCatalog[offer.id].text[offer.polarity],
+      title: `${destinyCatalog[offer.id].name} [${getAlignmentLabel(destinyCatalog[offer.id].alignment)}]`,
+      body: destinyCatalog[offer.id].text[destinyCatalog[offer.id].alignment],
       onClick: () => {
         closeModal();
         state.paused = false;
-        acquireDestiny(offer.id, offer.polarity);
+        acquireDestiny(offer.id);
       },
     })),
     actions: [{
@@ -964,9 +1077,6 @@ function buyDestinyOffer(id) {
   metaState.points -= def.baseCost;
   metaState.destiny.owned[id] = {
     level: 1,
-    basePolarity: "neutral",
-    currentPolarity: "neutral",
-    polarityLocked: false,
   };
   saveAndRefreshShop(`购入 ${def.name}`);
 }
@@ -1325,6 +1435,14 @@ function openLevelUp() {
   });
 }
 
+function maybeOpenPendingLevelUp() {
+  if (state.pendingLevelUps <= 0) return;
+  if (state.currentModal) return;
+  if (state.pendingMiniBossReward) return;
+  if (state.mode !== "playing") return;
+  openLevelUp();
+}
+
 function addXp(amount) {
   state.player.xp += amount * state.xpGainMult;
   while (state.player.xp >= xpNeeded(state.player.level)) {
@@ -1332,9 +1450,7 @@ function addXp(amount) {
     state.player.level += 1;
     state.pendingLevelUps += 1;
   }
-  if (state.pendingLevelUps > 0 && !state.currentModal && state.mode === "playing") {
-    openLevelUp();
-  }
+  maybeOpenPendingLevelUp();
 }
 
 
@@ -1709,18 +1825,29 @@ function spawnDrops(enemy) {
   });
 }
 
+function triggerMiniBossRewardVacuum() {
+  state.enemies = [];
+  state.enemyProjectiles = [];
+  state.drops.forEach((drop) => {
+    drop.autoCollect = true;
+  });
+}
+
 function killEnemy(enemy, source) {
   const index = state.enemies.indexOf(enemy);
   if (index >= 0) state.enemies.splice(index, 1);
+  if (enemy.isMiniBoss) {
+    state.campaign.miniBossDefeated = true;
+    state.paused = false;
+    state.pendingMiniBossReward = true;
+  }
   addXp(enemies[enemy.type].xp);
   spawnDrops(enemy);
   state.totalKills += 1;
   if (!enemy.isMiniBoss) state.campaign.stageKills += 1;
   if (state.player.skills.flame?.burst && enemy.burn > 0) pulse(enemy.x, enemy.y, 44, state.player.skills.flame.damage * 2.2, "burst");
   if (enemy.isMiniBoss) {
-    state.campaign.miniBossDefeated = true;
-    state.paused = false;
-    openPolarityInfusionModal();
+    triggerMiniBossRewardVacuum();
   }
 }
 
@@ -1832,24 +1959,70 @@ function openReincarnationModal(result, gainedPoints) {
   });
 }
 
+function openEndingModal(result) {
+  state.currentModal = "ending";
+  const endingTheme = result.includes("成仙")
+    ? "ending-modal ending-immortal"
+    : result.includes("化魔")
+      ? "ending-modal ending-demon"
+      : "ending-modal ending-human";
+  const title = result.includes("成仙")
+    ? "你已成仙"
+    : result.includes("化魔")
+      ? "你已化魔"
+      : "你成了人";
+  const subtitle = result.includes("成仙")
+    ? "白道命格占优，此世修行终证仙途。"
+    : result.includes("化魔")
+      ? "黑道命格占优，此世杀伐终入魔途。"
+      : "最强混元命格改写了结局，你从仙魔之间走回人间。";
+  const counts = getAlignmentCounts();
+  renderModal({
+    title,
+    body: subtitle,
+    bodyHtml: `
+      <div class="ending-hero">
+        <div class="ending-result">${result}</div>
+        <div class="ending-copy">白道命格 ${counts.white} · 黑道命格 ${counts.black} · 混元命格 ${counts.mixed}</div>
+        <div class="ending-copy">此世已终，轮回余烬归于命盘，下一世仍可继续修行。</div>
+      </div>
+    `,
+    choices: [],
+    actions: [
+      {
+        label: "重开试炼",
+        onClick: () => resetGame(),
+      },
+    ],
+    className: endingTheme,
+  });
+}
+
 function finishGame(result) {
   if (result !== RESULT_DEATH) {
-    const finalResult = state.campaign.runIndex >= TOTAL_RUNS ? getAlignmentResult() : `第${state.campaign.runIndex}轮已破`;
-    state.result = finalResult;
-    state.lastRunPoints = calculateRunPoints(finalResult);
-    metaState.points += state.lastRunPoints;
-    metaState.runs += 1;
-    metaState.bestKills = Math.max(metaState.bestKills, state.totalKills);
-    metaState.lastResult = finalResult;
-    saveMetaState();
-    if (state.campaign.runIndex >= TOTAL_RUNS) {
-      state.mode = "result";
-      state.running = false;
-      state.paused = true;
-      openRunShopModal(true, `最终大Boss已破，${finalResult}`);
-    } else {
-      openRunShopModal(false, `第${state.campaign.runIndex}轮已破，道途又进了一步。`);
+    const settleClear = () => {
+      const finalResult = state.campaign.runIndex >= TOTAL_RUNS ? getAlignmentResult() : `第${state.campaign.runIndex}轮已破`;
+      state.result = finalResult;
+      state.lastRunPoints = calculateRunPoints(finalResult);
+      metaState.points += state.lastRunPoints;
+      metaState.runs += 1;
+      metaState.bestKills = Math.max(metaState.bestKills, state.totalKills);
+      metaState.lastResult = finalResult;
+      saveMetaState();
+      if (state.campaign.runIndex >= TOTAL_RUNS) {
+        state.mode = "result";
+        state.running = false;
+        state.paused = true;
+        openEndingModal(finalResult);
+      } else {
+        openRunShopModal(false, `第${state.campaign.runIndex}轮已破，道途又进了一步。`);
+      }
+    };
+    if (state.campaign.stageType === "boss" && (state.whitePath.full || state.blackPath.full)) {
+      maybeHandlePostBossInfusion(settleClear);
+      return;
     }
+    settleClear();
     return;
   }
   state.mode = "result";
@@ -2107,10 +2280,15 @@ function updateBoss(dt) {
 }
 
 function updateDrops(dt) {
+  if (state.pendingMiniBossReward) {
+    state.drops.forEach((drop) => {
+      drop.autoCollect = true;
+    });
+  }
   state.drops = state.drops.filter((drop) => {
     const dist = distance(drop, state.player);
-    if (dist < state.player.pickupRange) {
-      const speed = 320 * dt;
+    if (drop.autoCollect || dist < state.player.pickupRange) {
+      const speed = (drop.autoCollect ? 960 : 320) * dt;
       drop.x += ((state.player.x - drop.x) / Math.max(1, dist)) * speed;
       drop.y += ((state.player.y - drop.y) / Math.max(1, dist)) * speed;
     }
@@ -2121,6 +2299,10 @@ function updateDrops(dt) {
     }
     return true;
   });
+  if (state.pendingMiniBossReward && state.drops.length === 0) {
+    state.pendingMiniBossReward = false;
+    maybeHandlePostBossInfusion(() => openStageDestinyOffer());
+  }
 }
 
 function updateStatuses(dt) {
@@ -2565,7 +2747,7 @@ function fillPath(color, amount) {
   path.value = Math.min(path.cap, path.value + amount * gainMult);
   if (path.value >= path.cap) {
     path.full = true;
-    setToast(color === "white" ? "白槽已满，可改命格" : "黑槽已满，可改命格");
+    setToast(color === "white" ? "白槽已满，可进行道途点化" : "黑槽已满，可进行道途点化");
   }
 }
 
@@ -2597,10 +2779,11 @@ function updateHud() {
   dom.whiteStageText.textContent = state.whitePath.full ? "白槽已满" : "白槽推进";
   dom.blackStageText.textContent = state.blackPath.full ? "黑槽已满" : "黑槽推进";
   dom.statusList.innerHTML = "";
-  const counts = getPolarityCounts();
+  const counts = getAlignmentCounts();
   const statusLabels = state.statuses.map((item) => `${item.name} ${item.remaining.toFixed(1)}s`);
   statusLabels.push(`白命格 ${counts.white}`);
   statusLabels.push(`黑命格 ${counts.black}`);
+  statusLabels.push(`混元命格 ${counts.mixed}`);
   statusLabels.slice(0, 6).forEach((label) => {
     const pill = document.createElement("div");
     pill.className = "status-pill";
@@ -2630,7 +2813,7 @@ function renderGameToText() {
       black: { value: Math.round(state.blackPath.value), cap: state.blackPath.cap, full: state.blackPath.full },
     },
     destinies: {
-      owned: getOwnedDestinyEntries().map((entry) => ({ id: entry.id, level: entry.level, polarity: entry.currentPolarity })),
+      owned: getOwnedDestinyEntries().map((entry) => ({ id: entry.id, level: entry.level, alignment: entry.def.alignment })),
       equipped: metaState.destiny.equipped,
     },
     enemy_count: state.enemies.length,
@@ -2654,6 +2837,37 @@ function renderGameToText() {
 }
 
 window.render_game_to_text = renderGameToText;
+window.__debug_setup_mini_boss_reward_flow = (color = "white") => {
+  metaState.destiny.owned = {
+    vital: { level: 2 },
+    blade: { level: 1 },
+    river: { level: 1 },
+  };
+  metaState.destiny.equipped = ["vital", "blade"];
+  saveMetaState();
+  resetGame();
+  closeModal();
+  state.paused = false;
+  state.currentModal = null;
+  state.pendingLevelUps = 0;
+  state.campaign.stageIndex = 1;
+  state.campaign.stageType = "small";
+  state.campaign.miniBossSpawned = true;
+  state.campaign.miniBossDefeated = true;
+  state.pendingMiniBossReward = true;
+  state.enemies = [];
+  state.enemyProjectiles = [];
+  state.drops = [
+    { x: state.player.x + 80, y: state.player.y, kind: "xp", value: 4, color: COLORS.xp, radius: 6, autoCollect: false },
+    { x: state.player.x - 70, y: state.player.y + 20, kind: "path", value: 8, color, radius: 7, autoCollect: false },
+  ];
+  state.whitePath.value = color === "white" ? state.whitePath.cap : 0;
+  state.whitePath.full = color === "white";
+  state.blackPath.value = color === "black" ? state.blackPath.cap : 0;
+  state.blackPath.full = color === "black";
+  render();
+  return renderGameToText();
+};
 window.advanceTime = (ms) => {
   const step = 1000 / 60;
   const count = Math.max(1, Math.round(ms / step));
