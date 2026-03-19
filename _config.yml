@@ -1,0 +1,12 @@
+exclude:
+  - node_modules/
+  - output/
+  - private_docs/
+  - progress.md
+  - package.json
+  - package-lock.json
+  - test-actions.json
+  - test-actions-level.json
+  - test-actions-loop.json
+  - tmp_upgrade_choices.png
+  - git
