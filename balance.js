@@ -1,8 +1,6 @@
 // Balance sheet
 // Modify values here, save the file, then refresh the page to test changes.
 window.GAME_BALANCE = {
-  // Player table
-  // Base player stats and the level-up XP curve.
   playerTable: {
     maxHp: 120,
     speed: 220,
@@ -14,16 +12,12 @@ window.GAME_BALANCE = {
     xpCurve: [20, 28, 36, 46, 58, 72, 88, 106, 126, 148, 172, 198],
   },
 
-  // Global run rules
-  // Match duration and path capacities.
   progression: {
     duration: 600,
     firstPathCap: 100,
     secondPathCap: 80,
   },
 
-  // Reincarnation table
-  // Meta progression rewards and persistent upgrades.
   reincarnationTable: {
     storageKey: "wannabe-immortal-save",
     pointsFromTimeDivisor: 60,
@@ -37,12 +31,10 @@ window.GAME_BALANCE = {
       pickup1: { name: "摄气残痕", cost: 4, maxLevel: 2, effectPerLevel: 0.15 },
       white1: { name: "白炁余韵", cost: 5, maxLevel: 2, effectPerLevel: 0.1 },
       black1: { name: "黑炁余烬", cost: 5, maxLevel: 2, effectPerLevel: 0.1 },
-      starter: { name: "前世所悟", cost: 8, maxLevel: 1, effectPerLevel: 1 }
-    }
+      starter: { name: "前世所悟", cost: 8, maxLevel: 1, effectPerLevel: 1 },
+    },
   },
 
-  // Wave table
-  // Spawn rhythm, elite timing, and time-based enemy scaling.
   waves: {
     spawnIntervalEarly: 2.5,
     spawnIntervalMid: 2.0,
@@ -74,8 +66,6 @@ window.GAME_BALANCE = {
     ],
   },
 
-  // Monster table
-  // All monsters live here, including boss as a special monster entry.
   monsterTable: {
     grunt: {
       name: "小妖",
@@ -89,7 +79,7 @@ window.GAME_BALANCE = {
     },
 
     charger: {
-      name: "冲锋兽",
+      name: "冲锋鬼",
       hp: 52,
       damage: 16,
       speed: 108,

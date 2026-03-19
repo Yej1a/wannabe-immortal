@@ -13,7 +13,7 @@
         <div class="brand">Wannabe Immortal</div>
         <div class="subtitle">10-minute cultivation roguelite prototype</div>
       </div>
-      <button id="start-btn" class="start-btn" type="button">开始修行</button>
+      <button id="start-btn" class="start-btn" type="button">开始试炼</button>
     </header>
     <main class="game-layout">
       <section class="hud left-panel">
@@ -38,7 +38,7 @@
         <canvas id="game" width="960" height="540"></canvas>
         <div id="overlay-message" class="overlay-message show">
           <div class="overlay-title">修仙肉鸽原型</div>
-          <div class="overlay-body">WASD 移动，自动释放术法。按下开始进入 10 分钟试炼。</div>
+          <div class="overlay-body">WASD 移动，自动释放术法。按下开始进入试炼。</div>
         </div>
         <div id="toast" class="toast"></div>
         <div id="skill-bar" class="skill-bar"></div>
@@ -46,17 +46,17 @@
       <section class="hud right-panel">
         <div class="panel-block">
           <div class="small-title">白槽</div>
-          <div class="label-row"><span id="white-stage-text">一阶段</span><span id="white-text"></span></div>
+          <div class="label-row"><span id="white-stage-text">白槽推进</span><span id="white-text"></span></div>
           <div class="meter dual"><div id="white-fill" class="fill white"></div></div>
         </div>
         <div class="panel-block">
           <div class="small-title">黑槽</div>
-          <div class="label-row"><span id="black-stage-text">一阶段</span><span id="black-text"></span></div>
+          <div class="label-row"><span id="black-stage-text">黑槽推进</span><span id="black-text"></span></div>
           <div class="meter dual"><div id="black-fill" class="fill black"></div></div>
         </div>
         <div class="panel-block">
-          <div class="small-title">节点</div>
-          <div class="node-hint">1/3, 2/3, 满值时触发效果或化身。</div>
+          <div class="small-title">提示</div>
+          <div class="node-hint">黑白槽满时可改写命格道性。</div>
         </div>
       </section>
     </main>

@@ -1,9 +1,8 @@
-const WIDTH = 960;
+﻿const WIDTH = 960;
 const HEIGHT = 540;
 const BALANCE = window.GAME_BALANCE;
 const GAME_DURATION = BALANCE.progression.duration;
 const FIRST_PATH_CAP = BALANCE.progression.firstPathCap;
-const SECOND_PATH_CAP = BALANCE.progression.secondPathCap;
 const META = BALANCE.reincarnationTable;
 
 const COLORS = {
@@ -52,6 +51,10 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault();
     return;
   }
+  if (["1", "2", "3"].includes(key) && tryUseActiveSlot(Number(key) - 1)) {
+    event.preventDefault();
+    return;
+  }
   if (key === "f") toggleFullscreen();
 });
 
@@ -69,6 +72,7 @@ const TOTAL_RUNS = 3;
 const DESTINY_SLOT_CAP = 4;
 const RESULT_DEATH = "death";
 const RESULT_CLEAR = "clear";
+const ACTIVE_UNLOCK_RANK = 6;
 
 const destinyCatalog = {
   vital: {
@@ -210,7 +214,7 @@ const skills = {
   thunder: {
     id: "thunder",
     name: "掌心雷",
-    description: "对最近敌人施落雷，可溅射。",
+    description: "对最近敌人施加落雷，可连锁。",
     baseCooldown: 1.4,
     baseDamage: 40,
     splash: 54,
@@ -230,6 +234,13 @@ const skills = {
     shield: 60,
     recharge: 12,
   },
+};
+
+const activeSkillTable = {
+  sword: { baseCooldown: 18 },
+  thunder: { baseCooldown: 16 },
+  guard: { baseCooldown: 18 },
+  flame: { baseCooldown: 20 },
 };
 
 const enemies = BALANCE.monsterTable;
@@ -295,10 +306,10 @@ function getPolarityCounts() {
 function getAlignmentResult() {
   if (state.whitePath.value === state.blackPath.value) {
     const counts = getPolarityCounts();
-    if (counts.black > counts.white) return "化魔";
-    return "成仙";
+    if (counts.black > counts.white) return "鍖栭瓟";
+    return "鎴愪粰";
   }
-  return state.whitePath.value > state.blackPath.value ? "成仙" : "化魔";
+  return state.whitePath.value > state.blackPath.value ? "鎴愪粰" : "鍖栭瓟";
 }
 
 function getDestinyWeight(polarity) {
@@ -353,7 +364,7 @@ function describeDestiny(id, polarity, level = 1) {
 
 function formatResultLabel(result) {
   if (result === RESULT_DEATH) return "陨落";
-  if (result === RESULT_CLEAR) return "通关";
+  if (result === RESULT_CLEAR) return "閫氬叧";
   return result;
 }
 
@@ -446,7 +457,6 @@ function applyDestinyBonuses(player, mods) {
 function makePathState(color) {
   return {
     color,
-    stage: 1,
     value: 0,
     cap: FIRST_PATH_CAP,
     full: false,
@@ -511,13 +521,9 @@ function createState() {
     blackGainMult,
     whitePath: makePathState("white"),
     blackPath: makePathState("black"),
-    avatar: null,
-    phaseLabel: "待开始",
+    phaseLabel: "寰呭紑濮?",
     currentModal: null,
     pendingLevelUps: 0,
-    whiteNodeTriggered: { one: false, two: false },
-    blackNodeTriggered: { one: false, two: false },
-    forcedTransform: false,
     statuses: [],
     totalKills: 0,
     modalOptions: null,
@@ -536,6 +542,31 @@ function clamp(value, min, max) {
 
 function distance(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function getActiveLevel(skill) {
+  return Math.max(0, skill.rank - (ACTIVE_UNLOCK_RANK - 1));
+}
+
+function getActiveCooldown(id, level) {
+  const base = activeSkillTable[id]?.baseCooldown || 18;
+  return Math.max(base * 0.55, base - (level - 1) * 1.2);
+}
+
+function isActiveUnlocked(skill) {
+  return getActiveLevel(skill) > 0;
+}
+
+function nearestEnemyFromPoint(origin) {
+  const targets = [...state.enemies];
+  if (state.boss) targets.push(state.boss);
+  return targets.sort((a, b) => distance(a, origin) - distance(b, origin))[0] || null;
+}
+
+function getTargetsWithinRadius(origin, radius) {
+  const targets = state.enemies.filter((enemy) => distance(origin, enemy) <= radius + enemy.radius);
+  if (state.boss && distance(origin, state.boss) <= radius + state.boss.radius) targets.push(state.boss);
+  return targets;
 }
 
 function formatTime(totalSeconds) {
@@ -641,7 +672,6 @@ function addStatus(name, duration, effects) {
 
 function getDamageMult() {
   let mult = state.bonusDamageMult || 1;
-  if (state.avatar === "black" && state.player.hp < state.player.maxHp * 0.4) mult *= 1.25;
   state.statuses.forEach((status) => {
     if (status.effects.damageMult) mult *= status.effects.damageMult;
   });
@@ -675,13 +705,13 @@ function unlockSkill(gameState, id) {
   const base = skills[id];
   if (!base) return;
   if (id === "sword") {
-    gameState.player.skills.sword = { id, rank: 1, cooldown: base.baseCooldown, damage: base.baseDamage, projectiles: 1, pierce: 0, timer: 0.2 };
+    gameState.player.skills.sword = { id, rank: 1, cooldown: base.baseCooldown, damage: base.baseDamage, projectiles: 1, pierce: 0, timer: 0.2, activeTimer: 0 };
   } else if (id === "thunder") {
-    gameState.player.skills.thunder = { id, rank: 1, cooldown: base.baseCooldown, damage: base.baseDamage, timer: 0.6, chain: 0, splash: base.splash };
+    gameState.player.skills.thunder = { id, rank: 1, cooldown: base.baseCooldown, damage: base.baseDamage, timer: 0.6, chain: 0, splash: base.splash, activeTimer: 0 };
   } else if (id === "flame") {
-    gameState.player.skills.flame = { id, rank: 1, radius: base.radius, timer: 0.1, tick: base.tick, damage: base.damage, burst: false };
+    gameState.player.skills.flame = { id, rank: 1, radius: base.radius, timer: 0.1, tick: base.tick, damage: base.damage, burst: false, activeTimer: 0 };
   } else if (id === "guard") {
-    gameState.player.skills.guard = { id, rank: 1, maxShield: base.shield, shield: base.shield, recharge: base.recharge, timer: 0, burst: false };
+    gameState.player.skills.guard = { id, rank: 1, maxShield: base.shield, shield: base.shield, recharge: base.recharge, timer: 0, burst: false, activeTimer: 0 };
   }
   gameState.player.skillOrder.push(id);
   gameState.player.skillFocus[id] = (gameState.player.skillFocus[id] || 0) + 1;
@@ -692,6 +722,8 @@ function resetGame() {
   const fresh = createState();
   Object.keys(state).forEach((key) => delete state[key]);
   Object.assign(state, fresh);
+  state.pendingShopResult = false;
+  state.pendingShopMessage = "";
   unlockSkill(state, "sword");
   showOverlay(false);
   dom.startBtn.textContent = "重新开始";
@@ -772,6 +804,10 @@ function maybeOpenStarterChoice() {
 
 function saveAndRefreshShop(message = "") {
   saveMetaState();
+  if (state.currentModal === "reincarnation" || state.result === RESULT_DEATH) {
+    openReincarnationModal(state.result || RESULT_DEATH, state.lastRunPoints);
+    return;
+  }
   openRunShopModal(!!state.pendingShopResult, message || state.pendingShopMessage || "");
 }
 
@@ -848,7 +884,7 @@ function openPolarityInfusionModal() {
   state.currentModal = "polarity-infuse";
   renderModal({
     title: "命格改道",
-    body: "黑白槽已满，可改写一枚命格的当前道性。",
+    body: "黑白槽已满，可以改写一枚命格的当前道性。",
     choices,
     actions: [{
       label: "稍后再说",
@@ -865,10 +901,10 @@ function openPolarityTargetModal(color) {
   state.pendingPolarityColor = color;
   renderModal({
     title: color === "white" ? "白意灌注" : "黑念灌注",
-    body: "选择一枚已拥有命格改写其当前道性。",
+    body: "选择一枚已拥有命格，改写其当前道性。",
     choices: getOwnedDestinyEntries().map((entry) => ({
       title: `${entry.def.name} [${entry.currentPolarity}]`,
-      body: `改写为 ${color}`,
+      body: `改写为${color === "white" ? "白道" : "黑道"}`,
       onClick: () => {
         metaState.destiny.owned[entry.id].currentPolarity = color;
         metaState.destiny.owned[entry.id].polarityLocked = true;
@@ -980,6 +1016,8 @@ function buildShopChoices() {
 }
 
 function openRunShopModal(finalStep, message) {
+  state.mode = finalStep ? "result" : "shop";
+  state.running = false;
   state.paused = true;
   state.currentModal = "run-shop";
   state.pendingShopResult = finalStep;
@@ -1005,6 +1043,8 @@ function openRunShopModal(finalStep, message) {
         state.paused = false;
         if (finalStep) resetGame();
         else {
+          state.mode = "playing";
+          state.running = true;
           state.campaign.runIndex += 1;
           state.campaign.stageIndex = 1;
           state.runStartTime = state.time;
@@ -1079,7 +1119,7 @@ const levelChoices = [
   },
   {
     id: "thunder-fast",
-    name: "急雷",
+    name: "疾雷",
     desc: "掌心雷冷却 -20%。",
     canTake: (stateRef) => !!stateRef.player.skills.thunder,
     apply: (stateRef) => {
@@ -1135,7 +1175,7 @@ const levelChoices = [
   {
     id: "flame-burst",
     name: "焚爆",
-    desc: "被点燃敌人死亡会爆炸。",
+    desc: "被点燃敌人死亡时会爆炸。",
     canTake: (stateRef) => !!stateRef.player.skills.flame && !stateRef.player.skills.flame.burst,
     apply: (stateRef) => {
       stateRef.player.skills.flame.burst = true;
@@ -1157,7 +1197,7 @@ const levelChoices = [
   },
   {
     id: "guard-recharge",
-    name: "金钟再铸",
+    name: "金钟重铸",
     desc: "护盾恢复时间 -20%。",
     canTake: (stateRef) => !!stateRef.player.skills.guard,
     apply: (stateRef) => {
@@ -1297,95 +1337,6 @@ function addXp(amount) {
   }
 }
 
-function openTransformation() {
-  state.paused = true;
-  state.currentModal = "transform";
-  const bothFull = state.whitePath.full && state.blackPath.full;
-  const choices = [];
-  if (bothFull || state.whitePath.full) {
-    choices.push({
-      title: "化身白修士",
-      body: "回复和护体更强，所有敌人都掉白点。",
-      onClick: () => transformTo("white"),
-    });
-  }
-  if (bothFull || state.blackPath.full) {
-    choices.push({
-      title: "化身黑修士",
-      body: "暴击与爆发更强，所有敌人都掉黑点。",
-      onClick: () => transformTo("black"),
-    });
-  }
-  renderModal({
-    title: bothFull ? "阴阳俱满，必须定道" : "道心已成，是否定道",
-    body: bothFull
-      ? "你的道途不能再拖延，立刻选择成仙或化魔。"
-      : "你可顺势化身，也可暂缓抉择，继续积蓄另一极之力。",
-    choices,
-    actions: bothFull ? [] : [{
-      label: "暂不选择",
-      onClick: () => {
-        closeModal();
-        state.paused = false;
-      },
-    }],
-  });
-}
-
-function transformTo(color) {
-  state.avatar = color;
-  if (color === "white") {
-    state.whitePath.stage = 2;
-    state.whitePath.value = 0;
-    state.whitePath.cap = SECOND_PATH_CAP;
-    state.phaseLabel = "白修士冲关";
-  } else {
-    state.blackPath.stage = 2;
-    state.blackPath.value = 0;
-    state.blackPath.cap = SECOND_PATH_CAP;
-    state.phaseLabel = "黑修士冲关";
-  }
-  closeModal();
-  state.paused = false;
-  setToast(color === "white" ? "化身白修士" : "化身黑修士");
-}
-
-function fillPath(color, amount) {
-  const path = color === "white" ? state.whitePath : state.blackPath;
-  const gainMult = color === "white" ? state.whiteGainMult : state.blackGainMult;
-  if (path.full) return;
-  path.value = Math.min(path.cap, path.value + amount * gainMult);
-  if (path.stage === 1) {
-    if (color === "white") {
-      if (!state.whiteNodeTriggered.one && path.value >= path.cap / 3) {
-        state.whiteNodeTriggered.one = true;
-        state.player.hp = Math.min(state.player.maxHp, state.player.hp + state.player.maxHp * 0.2);
-        setToast("白槽 1/3：顿悟");
-      }
-      if (!state.whiteNodeTriggered.two && path.value >= (path.cap * 2) / 3) {
-        state.whiteNodeTriggered.two = true;
-        grantMainSkillUpgrade();
-        state.player.pickupRange *= 1.1;
-        setToast("白槽 2/3：明心");
-      }
-    } else {
-      if (!state.blackNodeTriggered.one && path.value >= path.cap / 3) {
-        state.blackNodeTriggered.one = true;
-        addStatus("魔念", 8, { damageMult: 1.35, drain: 0.02 });
-        setToast("黑槽 1/3：魔念");
-      }
-      if (!state.blackNodeTriggered.two && path.value >= (path.cap * 2) / 3) {
-        state.blackNodeTriggered.two = true;
-        addStatus("入障", 12, { castMult: 1.4, incomingMult: 1.2 });
-        setToast("黑槽 2/3：入障");
-      }
-    }
-    if (path.value >= path.cap) {
-      path.full = true;
-      setToast(color === "white" ? "白槽已满，可改命格" : "黑槽已满，可改命格");
-    }
-  }
-}
 
 function enemyHealthMult() {
   return getEnemyProgressMult();
@@ -1476,7 +1427,6 @@ function updateSpawn(dt) {
 function spawnBoss() {
   state.bossFight = true;
   state.phaseLabel = `第${state.campaign.runIndex}轮 大Boss`;
-  state.phaseLabel = "Boss 战";
   state.enemies = [];
   state.enemyProjectiles = [];
   state.campaign.bossSpawned = true;
@@ -1503,7 +1453,19 @@ function nearestEnemies(count) {
 }
 
 function pulse(x, y, radius, damage, kind, affectsBoss = true) {
-  state.pulses.push({ x, y, radius, damage, kind, time: 0.18, hit: new Set(), affectsBoss });
+  const duration = kind === "flame" ? 0.32 : 0.18;
+  state.pulses.push({
+    x,
+    y,
+    radius,
+    damage,
+    kind,
+    time: duration,
+    duration,
+    hit: new Set(),
+    affectsBoss,
+    followPlayer: kind === "flame",
+  });
 }
 
 function dealDamage(target, amount, source = "player") {
@@ -1550,8 +1512,142 @@ function castThunder(skill) {
     .forEach((enemy) => strikeEnemy(enemy, skill.damage * 0.65, target));
 }
 
+function castActiveThunder(skill) {
+  const level = getActiveLevel(skill);
+  if (level <= 0) return false;
+  const radius = Math.min(WIDTH, HEIGHT) * 0.46;
+  state.pulses.push({
+    x: state.player.x,
+    y: state.player.y,
+    radius,
+    damage: computeDamage(skill.damage * (1.55 + level * 0.22)),
+    kind: "thunderstorm",
+    time: 2,
+    duration: 2,
+    hit: new Set(),
+    affectsBoss: true,
+    tickTimer: 0.05,
+    tickInterval: Math.max(0.16, 0.34 - level * 0.02),
+    strikeCount: 2 + level,
+  });
+  setToast(`掌心雷·天罚 (${level})`);
+  return true;
+}
+
+function castActiveSword(skill) {
+  const level = getActiveLevel(skill);
+  if (level <= 0) return false;
+  const count = 8 + level * 2;
+  const damage = computeDamage(skill.damage * (1.35 + level * 0.18));
+  for (let i = 0; i < count; i += 1) {
+    const angle = (Math.PI * 2 * i) / count;
+    state.projectiles.push({
+      x: state.player.x + Math.cos(angle) * 18,
+      y: state.player.y + Math.sin(angle) * 18,
+      vx: Math.cos(angle) * 220,
+      vy: Math.sin(angle) * 220,
+      radius: 7,
+      damage,
+      pierce: 1 + Math.floor(level / 2),
+      life: 2.8 + level * 0.18,
+      color: "#e8d79c",
+      kind: "sword-active",
+      homing: true,
+      turnRate: 7 + level * 0.4,
+      speed: 220 + level * 18,
+    });
+  }
+  setToast(`万剑归宗 (${level})`);
+  return true;
+}
+
+function castActiveGuard(skill) {
+  const level = getActiveLevel(skill);
+  if (level <= 0) return false;
+  const radius = 110 + level * 16;
+  const damage = computeDamage(48 + skill.maxShield * 0.35 + level * 18);
+  pulse(state.player.x, state.player.y, radius, damage, "guard");
+  state.enemies.forEach((enemy) => {
+    const dx = enemy.x - state.player.x;
+    const dy = enemy.y - state.player.y;
+    const dist = Math.max(1, Math.hypot(dx, dy));
+    if (dist <= radius + enemy.radius) {
+      const push = 36 + level * 12;
+      enemy.x = clamp(enemy.x + (dx / dist) * push, 20, WIDTH - 20);
+      enemy.y = clamp(enemy.y + (dy / dist) * push, 20, HEIGHT - 20);
+    }
+  });
+  if (state.boss) {
+    const dx = state.boss.x - state.player.x;
+    const dy = state.boss.y - state.player.y;
+    const dist = Math.max(1, Math.hypot(dx, dy));
+    if (dist <= radius + state.boss.radius) {
+      const push = 18 + level * 5;
+      state.boss.x = clamp(state.boss.x + (dx / dist) * push, 80, WIDTH - 80);
+      state.boss.y = clamp(state.boss.y + (dy / dist) * push, 60, HEIGHT - 60);
+    }
+  }
+  setToast(`金钟震荡 (${level})`);
+  return true;
+}
+
+function castActiveFlame(skill) {
+  const level = getActiveLevel(skill);
+  if (level <= 0) return false;
+  const meteorCount = 2 + level;
+  const waveCount = 3;
+  const waveInterval = 0.7;
+  const waveDuration = 0.7;
+  const damage = computeDamage(skill.damage * (3 + level * 0.45));
+  for (let wave = 0; wave < waveCount; wave += 1) {
+    const startDelay = wave * waveInterval;
+    for (let i = 0; i < meteorCount; i += 1) {
+      const target = nearestEnemyFromPoint(state.player) || { x: state.player.x + (Math.random() * 160 - 80), y: state.player.y + (Math.random() * 120 - 60), radius: 0 };
+      const jitterX = Math.random() * 80 - 40;
+      const jitterY = Math.random() * 60 - 30;
+      state.pulses.push({
+        x: clamp(target.x + jitterX, 30, WIDTH - 30),
+        y: clamp(target.y + jitterY, 30, HEIGHT - 30),
+        radius: 52 + level * 5,
+        damage,
+        kind: "meteor",
+        time: waveDuration,
+        duration: waveDuration,
+        startDelay,
+        hit: new Set(),
+        affectsBoss: true,
+        fromX: clamp(target.x + jitterX * 0.4, 30, WIDTH - 30),
+        fromY: -120 - (wave * meteorCount + i) * 36,
+        impactAt: 0.72,
+        landed: false,
+      });
+    }
+  }
+  setToast(`陨火天坠 (${level})`);
+  return true;
+}
+
+function tryUseActiveSlot(slotIndex) {
+  if (state.mode !== "playing" || state.paused || state.currentModal) return false;
+  const skillId = state.player.skillOrder[slotIndex];
+  if (!skillId) return false;
+  const skill = state.player.skills[skillId];
+  if (!skill || !isActiveUnlocked(skill) || skill.activeTimer > 0) return false;
+  let fired = false;
+  if (skillId === "thunder") fired = castActiveThunder(skill);
+  else if (skillId === "sword") fired = castActiveSword(skill);
+  else if (skillId === "guard") fired = castActiveGuard(skill);
+  else if (skillId === "flame") fired = castActiveFlame(skill);
+  if (!fired) return false;
+  skill.activeTimer = getActiveCooldown(skillId, getActiveLevel(skill));
+  return true;
+}
+
 function updateSkills(dt) {
   const castScale = getCastMult();
+  Object.values(state.player.skills).forEach((skill) => {
+    if (typeof skill.activeTimer === "number") skill.activeTimer = Math.max(0, skill.activeTimer - dt);
+  });
   if (state.player.skills.sword) {
     const skill = state.player.skills.sword;
     skill.timer -= dt * castScale / state.player.globalCooldown;
@@ -1602,7 +1698,7 @@ function updateSkills(dt) {
 
 function spawnDrops(enemy) {
   state.drops.push({ x: enemy.x, y: enemy.y, kind: "xp", value: enemies[enemy.type].xp, color: COLORS.xp, radius: 6 });
-  const orbColor = state.avatar ? state.avatar : (enemy.color === "black" ? "white" : "black");
+  const orbColor = enemy.color === "black" ? "white" : "black";
   state.drops.push({
     x: enemy.x + (Math.random() * 10 - 5),
     y: enemy.y + (Math.random() * 10 - 5),
@@ -1621,7 +1717,6 @@ function killEnemy(enemy, source) {
   state.totalKills += 1;
   if (!enemy.isMiniBoss) state.campaign.stageKills += 1;
   if (state.player.skills.flame?.burst && enemy.burn > 0) pulse(enemy.x, enemy.y, 44, state.player.skills.flame.damage * 2.2, "burst");
-  if (state.avatar === "black" && source === "player") pulse(enemy.x, enemy.y, 30, 18, "blackburst");
   if (enemy.isMiniBoss) {
     state.campaign.miniBossDefeated = true;
     state.paused = false;
@@ -1652,10 +1747,8 @@ function calculateRunPoints(result) {
   const runElapsed = Math.max(0, state.time - state.runStartTime);
   const fromTime = Math.floor(runElapsed / META.pointsFromTimeDivisor);
   const fromKills = Math.floor(state.totalKills / META.pointsFromKillsDivisor);
-  const transform = state.avatar ? META.transformBonus : 0;
   const boss = result === "成仙" || result === "化魔" ? META.bossWinBonus : 0;
-  const path = result === "成仙" || result === "化魔" ? META.pathWinBonus : 0;
-  return Math.max(1, fromTime + fromKills + transform + boss + path);
+  return Math.max(1, fromTime + fromKills + boss);
 }
 
 function buyUpgrade(id) {
@@ -1686,7 +1779,7 @@ function openReincarnationModal(result, gainedPoints) {
               ? `黑点获取 +${Math.round(upgrade.effectPerLevel * 100)}%`
               : "开局自选一个额外术法";
     return {
-      title: `${upgrade.name}  Lv.${level}/${upgrade.maxLevel}${locked ? " · 已满" : ""}`,
+      title: `${upgrade.name}  Lv.${level}/${upgrade.maxLevel}${locked ? " | 已满" : ""}`,
       body: `${effectText} | 花费 ${upgrade.cost} 轮回点${metaState.points < upgrade.cost && !locked ? " | 轮回点不足" : ""}`,
       onClick: () => buyUpgrade(id),
       disabled: locked || metaState.points < upgrade.cost,
@@ -1763,6 +1856,8 @@ function finishGame(result) {
   state.running = false;
   state.result = result;
   state.paused = true;
+  state.pendingShopResult = false;
+  state.pendingShopMessage = "";
   state.lastRunPoints = calculateRunPoints(result);
   metaState.points += state.lastRunPoints;
   metaState.runs += 1;
@@ -1784,6 +1879,19 @@ function updatePlayer(dt) {
 
 function updateProjectiles(dt) {
   state.projectiles = state.projectiles.filter((projectile) => {
+    if (projectile.homing) {
+      const target = nearestEnemyFromPoint(projectile);
+      if (target) {
+        const dx = target.x - projectile.x;
+        const dy = target.y - projectile.y;
+        const dist = Math.max(1, Math.hypot(dx, dy));
+        const desiredVx = (dx / dist) * projectile.speed;
+        const desiredVy = (dy / dist) * projectile.speed;
+        const turn = clamp(projectile.turnRate * dt, 0, 1);
+        projectile.vx += (desiredVx - projectile.vx) * turn;
+        projectile.vy += (desiredVy - projectile.vy) * turn;
+      }
+    }
     projectile.x += projectile.vx * dt;
     projectile.y += projectile.vy * dt;
     projectile.life -= dt;
@@ -1818,8 +1926,46 @@ function updateProjectiles(dt) {
 
 function updatePulses(dt) {
   state.pulses = state.pulses.filter((pulseItem) => {
+    if (pulseItem.startDelay > 0) {
+      pulseItem.startDelay = Math.max(0, pulseItem.startDelay - dt);
+      return true;
+    }
+    if (pulseItem.followPlayer) {
+      pulseItem.x = state.player.x;
+      pulseItem.y = state.player.y;
+    }
+    if (pulseItem.kind === "thunderstorm") {
+      pulseItem.tickTimer -= dt;
+      while (pulseItem.tickTimer <= 0) {
+        pulseItem.tickTimer += pulseItem.tickInterval;
+        const targets = getTargetsWithinRadius(pulseItem, pulseItem.radius);
+        if (!targets.length) break;
+        const ordered = targets
+          .sort((a, b) => distance(a, pulseItem) - distance(b, pulseItem))
+          .slice(0, pulseItem.strikeCount);
+        ordered.forEach((target, index) => {
+          state.pulses.push({
+            x: target.x,
+            y: target.y,
+            radius: 24,
+            damage: 0,
+            kind: "thunder",
+            time: 0.18,
+            duration: 0.18,
+            hit: new Set(),
+            fromX: target.x + (index % 2 === 0 ? -16 : 16),
+            fromY: -90 - index * 16,
+          });
+          dealDamage(target, pulseItem.damage);
+        });
+      }
+    }
     pulseItem.time -= dt;
-    const scale = 1 - pulseItem.time / 0.18;
+    const duration = pulseItem.duration || 0.18;
+    const scale = 1 - pulseItem.time / duration;
+    if (pulseItem.kind === "meteor" && !pulseItem.landed && scale >= (pulseItem.impactAt || 0.72)) {
+      pulseItem.landed = true;
+    }
     const hitRadius = pulseItem.radius * clamp(scale, 0.2, 1);
     if (pulseItem.kind === "bosswave" && !pulseItem.hit.has(state.player) && distance(pulseItem, state.player) <= hitRadius + state.player.radius) {
       pulseItem.hit.add(state.player);
@@ -1828,16 +1974,19 @@ function updatePulses(dt) {
     state.enemies.forEach((enemy) => {
       if (pulseItem.hit.has(enemy)) return;
       if (distance(pulseItem, enemy) <= hitRadius + enemy.radius) {
-        pulseItem.hit.add(enemy);
-        if (pulseItem.damage > 0) {
+        if (pulseItem.damage > 0 && (pulseItem.kind !== "meteor" || pulseItem.landed)) {
+          pulseItem.hit.add(enemy);
           dealDamage(enemy, pulseItem.damage);
           if (pulseItem.kind === "flame") enemy.burn = 2.5;
+          if (pulseItem.kind === "meteor") enemy.burn = 4;
         }
       }
     });
     if (pulseItem.affectsBoss && state.boss && !pulseItem.hit.has(state.boss) && distance(pulseItem, state.boss) <= hitRadius + state.boss.radius) {
-      pulseItem.hit.add(state.boss);
-      if (pulseItem.damage > 0) dealDamage(state.boss, pulseItem.damage);
+      if (pulseItem.damage > 0 && (pulseItem.kind !== "meteor" || pulseItem.landed)) {
+        pulseItem.hit.add(state.boss);
+        dealDamage(state.boss, pulseItem.damage);
+      }
     }
     return pulseItem.time > 0;
   });
@@ -1996,13 +2145,6 @@ function refreshPhase() {
     return;
   }
   state.phaseLabel = `${prefix} 击破 ${state.campaign.stageKills}/${state.campaign.targetKills}`;
-  return;
-  if (state.bossFight) state.phaseLabel = "Boss 战";
-  else if (state.avatar) state.phaseLabel = state.avatar === "white" ? "白修士冲关" : "黑修士冲关";
-  else if (state.whitePath.full || state.blackPath.full) state.phaseLabel = "可化身";
-  else if (state.time < 150) state.phaseLabel = "混元试炼";
-  else if (state.time < 330) state.phaseLabel = "中期成型";
-  else state.phaseLabel = "道途偏转";
 }
 
 function update(dt) {
@@ -2060,11 +2202,18 @@ function drawDrops(ctx) {
 
 function drawPlayer(ctx) {
   if (state.player.skills.flame) {
-    ctx.strokeStyle = "rgba(255,140,70,0.32)";
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(255, 146, 84, 0.28)";
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(state.player.x, state.player.y, state.player.skills.flame.radius, 0, Math.PI * 2);
     ctx.stroke();
+    const glow = ctx.createRadialGradient(state.player.x, state.player.y, 4, state.player.x, state.player.y, 26);
+    glow.addColorStop(0, "rgba(255, 220, 150, 0.45)");
+    glow.addColorStop(1, "rgba(255, 120, 60, 0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(state.player.x, state.player.y, 26, 0, Math.PI * 2);
+    ctx.fill();
   }
   if (state.player.skills.guard?.shield > 0) {
     ctx.strokeStyle = "rgba(204, 224, 255, 0.55)";
@@ -2073,7 +2222,7 @@ function drawPlayer(ctx) {
     ctx.arc(state.player.x, state.player.y, state.player.radius + 7, 0, Math.PI * 2);
     ctx.stroke();
   }
-  ctx.fillStyle = state.avatar === "white" ? COLORS.white : state.avatar === "black" ? COLORS.black : COLORS.player;
+  ctx.fillStyle = COLORS.player;
   ctx.beginPath();
   ctx.arc(state.player.x, state.player.y, state.player.radius, 0, Math.PI * 2);
   ctx.fill();
@@ -2135,7 +2284,7 @@ function drawSwordProjectile(ctx, projectile) {
 
 function drawProjectiles(ctx) {
   state.projectiles.forEach((projectile) => {
-    if (projectile.kind === "sword") {
+    if (projectile.kind === "sword" || projectile.kind === "sword-active") {
       drawSwordProjectile(ctx, projectile);
       return;
     }
@@ -2186,11 +2335,135 @@ function drawLightningPulse(ctx, pulseItem, alpha) {
   ctx.restore();
 }
 
+function drawThunderstormPulse(ctx, pulseItem, alpha) {
+  ctx.save();
+  ctx.strokeStyle = `rgba(124, 196, 255, ${alpha * 0.45})`;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(pulseItem.x, pulseItem.y, pulseItem.radius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.fillStyle = `rgba(88, 148, 255, ${alpha * 0.08})`;
+  ctx.beginPath();
+  ctx.arc(pulseItem.x, pulseItem.y, pulseItem.radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  const sparks = 6;
+  for (let i = 0; i < sparks; i += 1) {
+    const angle = (Math.PI * 2 * i) / sparks + pulseItem.time * 3.2;
+    const dist = pulseItem.radius * (0.25 + (i % 3) * 0.2);
+    const x = pulseItem.x + Math.cos(angle) * dist;
+    const y = pulseItem.y + Math.sin(angle) * dist;
+    ctx.strokeStyle = `rgba(210, 242, 255, ${alpha * 0.65})`;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(x - 6, y - 10);
+    ctx.lineTo(x + 2, y);
+    ctx.lineTo(x - 3, y + 10);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawFlamePulse(ctx, pulseItem, alpha) {
+  const duration = pulseItem.duration || 0.18;
+  const progress = clamp(1 - pulseItem.time / duration, 0, 1);
+  const radius = pulseItem.radius * progress;
+  const tongues = 14;
+
+  ctx.save();
+  ctx.translate(pulseItem.x, pulseItem.y);
+  for (let i = 0; i < tongues; i += 1) {
+    const angle = (Math.PI * 2 * i) / tongues + progress * 0.8;
+    const tip = radius + 10 + Math.sin(progress * 8 + i) * 3;
+    const base = Math.max(6, radius - 8);
+    const spread = 0.11;
+
+    ctx.fillStyle = `rgba(255, 127, 54, ${alpha * 0.45})`;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle - spread) * base, Math.sin(angle - spread) * base);
+    ctx.quadraticCurveTo(Math.cos(angle) * (radius + 4), Math.sin(angle) * (radius + 4), Math.cos(angle) * tip, Math.sin(angle) * tip);
+    ctx.quadraticCurveTo(Math.cos(angle + spread) * (radius + 4), Math.sin(angle + spread) * (radius + 4), Math.cos(angle + spread) * base, Math.sin(angle + spread) * base);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = `rgba(255, 204, 118, ${alpha * 0.95})`;
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.strokeStyle = `rgba(255, 94, 45, ${alpha * 0.75})`;
+  ctx.lineWidth = 4.5;
+  ctx.beginPath();
+  ctx.arc(0, 0, Math.max(4, radius - 3), 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawMeteorPulse(ctx, pulseItem, alpha) {
+  const duration = pulseItem.duration || 0.5;
+  const progress = clamp(1 - pulseItem.time / duration, 0, 1);
+  const impactAt = pulseItem.impactAt || 0.72;
+  const startX = pulseItem.fromX ?? pulseItem.x;
+  const startY = pulseItem.fromY ?? -120;
+  const endX = pulseItem.x;
+  const endY = pulseItem.y;
+  const travel = clamp(progress / impactAt, 0, 1);
+  const meteorX = startX + (endX - startX) * travel;
+  const meteorY = startY + (endY - startY) * travel;
+
+  ctx.save();
+  if (progress < impactAt) {
+    ctx.strokeStyle = `rgba(255, 155, 92, ${alpha * 0.45})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(meteorX, meteorY);
+    ctx.stroke();
+
+    ctx.fillStyle = `rgba(255, 196, 121, ${alpha})`;
+    ctx.beginPath();
+    ctx.arc(meteorX, meteorY, 9, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  if (progress >= impactAt) {
+    const shock = clamp((progress - impactAt) / (1 - impactAt), 0, 1);
+    ctx.strokeStyle = `rgba(255, 176, 84, ${alpha})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(endX, endY, pulseItem.radius * shock, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = `rgba(255, 110, 56, ${alpha * 0.45})`;
+    ctx.beginPath();
+    ctx.arc(endX, endY, 14 + shock * 20, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawPulses(ctx) {
   state.pulses.forEach((pulseItem) => {
-    const alpha = clamp(pulseItem.time / 0.18, 0, 1);
+    if (pulseItem.startDelay > 0) return;
+    const duration = pulseItem.duration || 0.18;
+    const alpha = clamp(pulseItem.time / duration, 0, 1);
     if (pulseItem.kind === "thunder") {
       drawLightningPulse(ctx, pulseItem, alpha);
+      return;
+    }
+    if (pulseItem.kind === "thunderstorm") {
+      drawThunderstormPulse(ctx, pulseItem, alpha);
+      return;
+    }
+    if (pulseItem.kind === "flame") {
+      drawFlamePulse(ctx, pulseItem, alpha);
+      return;
+    }
+    if (pulseItem.kind === "meteor") {
+      drawMeteorPulse(ctx, pulseItem, alpha);
       return;
     }
     ctx.strokeStyle = pulseItem.kind === "thunder"
@@ -2209,12 +2482,17 @@ function renderSkillBar() {
   const slots = state.player.skillOrder.map((id) => {
     const skill = state.player.skills[id];
     const template = skills[id];
+    const slotIndex = state.player.skillOrder.indexOf(id) + 1;
+    const activeLevel = getActiveLevel(skill);
+    const activeText = activeLevel > 0
+      ? (skill.activeTimer > 0 ? `主动 ${slotIndex}键 ${skill.activeTimer.toFixed(1)}s` : `主动 ${slotIndex}键 就绪`)
+      : `主动 ${slotIndex}键 ${ACTIVE_UNLOCK_RANK}阶解锁`;
     let detail = `Rank ${skill.rank}`;
     if (id === "guard") detail += ` | 护盾 ${Math.max(0, Math.ceil(skill.shield))}`;
     else if (id === "sword") detail += ` | ${skill.projectiles} 剑`;
     else if (id === "thunder") detail += ` | 链 ${skill.chain}`;
     else if (id === "flame") detail += ` | 半径 ${Math.floor(skill.radius)}`;
-    return `<div class="skill-card"><div class="skill-name">${template.name}</div><div class="skill-detail">${detail}<br>${template.description}</div></div>`;
+    return `<div class="skill-card"><div class="skill-name">${slotIndex}. ${template.name}</div><div class="skill-detail">${detail}<br>${activeText}<br>${template.description}</div></div>`;
   });
   while (slots.length < 3) {
     slots.push('<div class="skill-card"><div class="skill-name">空术法位</div><div class="skill-detail">升级时可获得新的主动术法。</div></div>');
@@ -2234,15 +2512,10 @@ function updateHud() {
   dom.blackFill.style.width = `${(state.blackPath.value / state.blackPath.cap) * 100}%`;
   dom.whiteText.textContent = `${Math.floor(state.whitePath.value)} / ${state.whitePath.cap}`;
   dom.blackText.textContent = `${Math.floor(state.blackPath.value)} / ${state.blackPath.cap}`;
-  dom.whiteStageText.textContent = `白槽 ${state.whitePath.stage} 阶段`;
-  dom.blackStageText.textContent = `黑槽 ${state.blackPath.stage} 阶段`;
   dom.whiteStageText.textContent = state.whitePath.full ? "白槽已满" : "白槽推进";
   dom.blackStageText.textContent = state.blackPath.full ? "黑槽已满" : "黑槽推进";
   dom.statusList.innerHTML = "";
   const statusLabels = state.statuses.map((item) => `${item.name} ${item.remaining.toFixed(1)}s`);
-  if (state.avatar === "white") statusLabels.push("白修士");
-  if (state.avatar === "black") statusLabels.push("黑修士");
-  const counts = getPolarityCounts();
   statusLabels.push(`白命格 ${counts.white}`);
   statusLabels.push(`黑命格 ${counts.black}`);
   statusLabels.slice(0, 6).forEach((label) => {
@@ -2285,6 +2558,58 @@ async function toggleFullscreen() {
   else await dom.canvas.requestFullscreen();
 }
 
+function fillPath(color, amount) {
+  const path = color === "white" ? state.whitePath : state.blackPath;
+  const gainMult = color === "white" ? state.whiteGainMult : state.blackGainMult;
+  if (path.full) return;
+  path.value = Math.min(path.cap, path.value + amount * gainMult);
+  if (path.value >= path.cap) {
+    path.full = true;
+    setToast(color === "white" ? "白槽已满，可改命格" : "黑槽已满，可改命格");
+  }
+}
+
+function refreshPhase() {
+  const prefix = `第${state.campaign.runIndex}轮 第${state.campaign.stageIndex}关`;
+  if (state.bossFight) {
+    state.phaseLabel = `第${state.campaign.runIndex}轮 大Boss`;
+    return;
+  }
+  if (state.campaign.miniBossSpawned && !state.campaign.miniBossDefeated) {
+    state.phaseLabel = `${prefix} 小Boss`;
+    return;
+  }
+  state.phaseLabel = `${prefix} 击破 ${state.campaign.stageKills}/${state.campaign.targetKills}`;
+}
+
+function updateHud() {
+  dom.healthFill.style.width = `${(state.player.hp / state.player.maxHp) * 100}%`;
+  dom.healthText.textContent = `${Math.max(0, Math.ceil(state.player.hp))} / ${Math.ceil(state.player.maxHp)}`;
+  dom.levelText.textContent = state.player.level;
+  dom.xpFill.style.width = `${(state.player.xp / xpNeeded(state.player.level)) * 100}%`;
+  dom.xpText.textContent = `${Math.floor(state.player.xp)} / ${xpNeeded(state.player.level)}`;
+  dom.timerText.textContent = `R${state.campaign.runIndex}-${state.campaign.stageIndex}`;
+  dom.phaseText.textContent = state.phaseLabel;
+  dom.whiteFill.style.width = `${(state.whitePath.value / state.whitePath.cap) * 100}%`;
+  dom.blackFill.style.width = `${(state.blackPath.value / state.blackPath.cap) * 100}%`;
+  dom.whiteText.textContent = `${Math.floor(state.whitePath.value)} / ${state.whitePath.cap}`;
+  dom.blackText.textContent = `${Math.floor(state.blackPath.value)} / ${state.blackPath.cap}`;
+  dom.whiteStageText.textContent = state.whitePath.full ? "白槽已满" : "白槽推进";
+  dom.blackStageText.textContent = state.blackPath.full ? "黑槽已满" : "黑槽推进";
+  dom.statusList.innerHTML = "";
+  const counts = getPolarityCounts();
+  const statusLabels = state.statuses.map((item) => `${item.name} ${item.remaining.toFixed(1)}s`);
+  statusLabels.push(`白命格 ${counts.white}`);
+  statusLabels.push(`黑命格 ${counts.black}`);
+  statusLabels.slice(0, 6).forEach((label) => {
+    const pill = document.createElement("div");
+    pill.className = "status-pill";
+    pill.textContent = label;
+    dom.statusList.appendChild(pill);
+  });
+  renderSkillBar();
+}
+
 function renderGameToText() {
   return JSON.stringify({
     mode: state.mode,
@@ -2298,7 +2623,6 @@ function renderGameToText() {
       hp: Math.round(state.player.hp),
       max_hp: Math.round(state.player.maxHp),
       level: state.player.level,
-      avatar: state.avatar || "none",
       skills: state.player.skillOrder.map((id) => ({ id, rank: state.player.skills[id].rank })),
     },
     paths: {

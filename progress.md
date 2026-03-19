@@ -219,3 +219,80 @@ ode --check app.js passed
 ode --check app.js passed
   - browser smoke check captured updated combat screenshots with thunder chain and sword projectile visuals.
 
+
+2026-03-19 flame wave vfx pass 1
+
+- Changed flame pulses from a simple ring stroke to an outward-traveling fire wave with flame tongues around the ring.
+- Extended flame pulse lifetime slightly so the outward propagation reads more clearly in motion.
+- Reduced the always-on flame aura around the player to a small ember glow so the traveling wave remains the main visual.
+- Validation:
+  - 
+ode --check app.js passed
+  - browser smoke check captured the updated fire-wave effect during combat.
+
+
+2026-03-19 death-flow fix pass 2
+
+- Fixed a modal flow conflict where death settlement upgrades reused the run-end shop refresh path and could wrongly send the player into 进入下一轮 instead of restarting the campaign.
+- Death settlement now always refreshes back into the reincarnation modal, and pending run-shop state is cleared on death and on full reset.
+- Validation:
+  - 
+ode --check app.js passed
+  - targeted browser tests confirmed death -> Enter stays on death settlement, and death -> 再入轮回 restarts at run 1 stage 1 instead of advancing to run 2.
+
+
+2026-03-19 flame-center fix pass 1
+
+- Player-cast flame pulses now follow the player's current center while expanding, so the fire ring no longer drifts off and appears detached when moving.
+- Targeted checks showed mini-boss kill -> destiny choice -> next stage keeps the current XP value instead of wiping it.
+- Validation:
+  - 
+ode --check app.js passed
+  - browser evaluation confirmed flame pulse center matches player position after movement and XP stayed unchanged across mini-boss stage advance.
+
+
+2026-03-19 active-skill pass 1
+
+- Added active skills for all four spell types. Active skills unlock at rank 6 and scale with ank - 5.
+- Bound active casts to spell slots: current slot 1/2/3 use keyboard 1/2/3.
+- Implemented first-pass actives:
+  - Thunder: half-screen lightning strike
+  - Sword: homing sword burst (万剑归宗 style)
+  - Guard: damaging knockback shockwave
+  - Flame: meteor rain
+- Added cooldown/readiness text to the skill bar for each learned spell slot.
+- Validation:
+  - 
+ode --check app.js passed
+  - browser checks confirmed slot skills can fire, start cooldowns, and spawn the expected projectile/pulse types for sword, thunder, guard, and flame.
+
+
+2026-03-19 legacy-cleanup pass 1
+
+- Removed active runtime dependence on the old avatar/transformation path by stripping avatar-based damage, drop, and score bonuses from live code paths.
+- Re-overrode illPath, efreshPhase, updateHud, and enderGameToText near the runtime tail so the game now uses the new campaign/path-meter presentation instead of old stage/avatar HUD logic.
+- Simplified run-point calculation to only use current run time, kills, and final boss clear bonus.
+- Validation:
+  - 
+ode --check app.js passed
+  - browser smoke check confirmed gameplay still starts normally and ender_game_to_text no longer emits an vatar field.
+
+- Follow-up verification: Playwright smoke run still starts correctly after the legacy cleanup overrides, and the emitted text state now omits vatar entirely.
+
+
+2026-03-19 cleanup and aoe pass 1
+
+- Physically removed the major dead transformation / old HUD / old phase residue blocks that were previously only bypassed at runtime.
+- Restored pp.js syntax after an encoding-related edit break and re-stabilized the runtime tail (illPath, efreshPhase, updateHud, enderGameToText, loop bindings).
+- Changed active thunder into a 2-second thunderstorm zone that keeps striking enemies inside the area instead of a one-shot screen nuke.
+- Added a persistent flame radius ring around the player so the fire aura range is readable at a glance.
+- Validation:
+  - 
+ode --check app.js passed
+  - Playwright smoke run completed successfully
+  - targeted browser check confirmed 	hunderstorm persists for about 2 seconds and then expires, while the flame radius remains visible.
+
+
+- 2026-03-19：修复 index.html / balance.js / app.js 中文乱码，统一命格、技能、商店、HUD、结算与调试输出文案，并验证 app.js 语法与浏览器冒烟。
+
+- 2026-03-19：将火环主动改为 3 波陨石雨（0.7s 间隔，总历时约 2.1s），并强化轮次商店状态为专用 shop 模式，验证大Boss通关后会稳定弹出商店。
