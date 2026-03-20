@@ -1,28 +1,10 @@
 ﻿const WIDTH = 960;
 const HEIGHT = 540;
-const BALANCE = window.GAME_BALANCE;
-const GAME_DURATION = BALANCE.progression.duration;
-const FIRST_PATH_CAP = BALANCE.progression.firstPathCap;
-const META = BALANCE.reincarnationTable;
-const PATH_COMBAT = BALANCE.pathCombat;
-const PATH_THRESHOLDS = PATH_COMBAT.thresholds;
-
-const COLORS = {
-  bg: "#091019",
-  grid: "rgba(255,255,255,0.05)",
-  player: "#d8c88d",
-  white: "#efe8d2",
-  black: "#35284c",
-  enemyWhite: "#e7dcc2",
-  enemyBlack: "#4f4067",
-  xp: "#59b8ff",
-  boss: "#a44a4a",
-};
-
 const dom = {
   canvas: document.getElementById("game"),
   ctx: document.getElementById("game").getContext("2d"),
   startBtn: document.getElementById("start-btn"),
+  pauseBtn: document.getElementById("pause-btn"),
   healthFill: document.getElementById("health-fill"),
   healthText: document.getElementById("health-text"),
   xpFill: document.getElementById("xp-fill"),
@@ -44,7 +26,7 @@ const dom = {
 };
 
 const keys = {};
-let toastTimeout = null;
+const uiState = { toastTimeout: null };
 
 window.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
@@ -75,322 +57,130 @@ window.addEventListener("keyup", (event) => {
 document.addEventListener("fullscreenchange", resizeCanvas);
 window.addEventListener("resize", resizeCanvas);
 
-const baseStats = BALANCE.playerTable;
-const xpCurve = BALANCE.playerTable.xpCurve;
-const STAGES_PER_RUN = 4;
-const TOTAL_RUNS = 3;
-const DESTINY_SLOT_CAP = 4;
-const RESULT_DEATH = "death";
-const RESULT_CLEAR = "clear";
-const ACTIVE_UNLOCK_RANK = 6;
-const HUMAN_ENDING_DESTINY_ID = "lotus";
-const DAO_POINTIFY_WEIGHTS = {
-  white: [
-    { value: "white", weight: 94 },
-    { value: "mixed", weight: 4 },
-    { value: "black", weight: 2 },
-  ],
-  black: [
-    { value: "black", weight: 94 },
-    { value: "mixed", weight: 4 },
-    { value: "white", weight: 2 },
-  ],
-};
-
-const destinyCatalog = {
-  vital: {
-    id: "vital",
-    name: "命元诀",
-    tier: "common",
-    alignment: "white",
-    category: "combat",
-    baseCost: 8,
-    maxLevel: 3,
-    upgradeCosts: [6, 10],
-    text: {
-      white: "提升最大生命与回复。",
-      black: "提升伤害。",
-      mixed: "提升拾取范围。",
-    },
-  },
-  spirit: {
-    id: "spirit",
-    name: "聚灵印",
-    tier: "common",
-    alignment: "white",
-    category: "support",
-    baseCost: 8,
-    maxLevel: 3,
-    upgradeCosts: [6, 10],
-    text: {
-      white: "提升经验获取。",
-      black: "提升暴击率。",
-      mixed: "提升移动速度。",
-    },
-  },
-  river: {
-    id: "river",
-    name: "归元息",
-    tier: "common",
-    alignment: "mixed",
-    category: "support",
-    baseCost: 8,
-    maxLevel: 3,
-    upgradeCosts: [6, 10],
-    text: {
-      white: "提升白槽获取。",
-      black: "提升黑槽获取。",
-      mixed: "同时微量提升黑白槽获取。",
-    },
-  },
-  blade: {
-    id: "blade",
-    name: "剑意骨",
-    tier: "true",
-    alignment: "black",
-    category: "combat",
-    baseCost: 20,
-    maxLevel: 3,
-    upgradeCosts: [12, 18],
-    text: {
-      white: "提升护体与减伤。",
-      black: "提升暴伤与输出。",
-      mixed: "少量提升冷却效率。",
-    },
-  },
-  thunder: {
-    id: "thunder",
-    name: "惊雷纹",
-    tier: "true",
-    alignment: "black",
-    category: "combat",
-    baseCost: 20,
-    maxLevel: 3,
-    upgradeCosts: [12, 18],
-    text: {
-      white: "提升回复与经验。",
-      black: "提升伤害与施法频率。",
-      mixed: "提升移动速度与拾取。",
-    },
-  },
-  ward: {
-    id: "ward",
-    name: "护命符",
-    tier: "true",
-    alignment: "white",
-    category: "support",
-    baseCost: 20,
-    maxLevel: 3,
-    upgradeCosts: [12, 18],
-    text: {
-      white: "提升最大生命与白道收益。",
-      black: "提升暴击与黑道收益。",
-      mixed: "提升基础增伤。",
-    },
-  },
-  reaper: {
-    id: "reaper",
-    name: "修罗契",
-    tier: "fate",
-    alignment: "black",
-    category: "combat",
-    baseCost: 42,
-    maxLevel: 3,
-    upgradeCosts: [20, 28],
-    text: {
-      white: "高额提升生存。",
-      black: "高额提升伤害与暴击。",
-      mixed: "均衡提升输出与资源。",
-    },
-  },
-  lotus: {
-    id: "lotus",
-    name: "净世莲",
-    tier: "fate",
-    alignment: "mixed",
-    category: "support",
-    baseCost: 42,
-    maxLevel: 3,
-    upgradeCosts: [20, 28],
-    text: {
-      white: "高额提升回复与经验。",
-      black: "高额提升黑槽与爆发。",
-      mixed: "高额提升移动与拾取。",
-    },
-  },
-};
+const {
+  BALANCE,
+  GAME_DURATION,
+  META,
+  PATH_COMBAT,
+  PATH_THRESHOLDS,
+  COLORS,
+  baseStats,
+  xpCurve,
+  STAGES_PER_RUN,
+  TOTAL_RUNS,
+  RESULT_DEATH,
+  RESULT_CLEAR,
+  ACTIVE_UNLOCK_RANK,
+  HUMAN_ENDING_DESTINY_ID,
+  destinyCatalog,
+  skills,
+  activeSkillTable,
+  enemies,
+} = window.GameData;
+const {
+  createCampaignState: createCampaignStateImpl,
+  createMetaState: createMetaStateImpl,
+  loadMetaState: loadMetaStateImpl,
+  saveMetaState: saveMetaStateImpl,
+  createState: createStateImpl,
+} = window.RuntimeState;
+const {
+  ensureMetaCollections: ensureMetaCollectionsImpl,
+  getEntryAlignment: getEntryAlignmentImpl,
+  getDestinyText: getDestinyTextImpl,
+  getOwnedDestinyEntries: getOwnedDestinyEntriesImpl,
+  getEquippedDestinyEntries: getEquippedDestinyEntriesImpl,
+  getUnequippedOwnedDestinyEntries: getUnequippedOwnedDestinyEntriesImpl,
+  getAlignmentCounts: getAlignmentCountsImpl,
+  getAlignmentResult: getAlignmentResultImpl,
+  getMissingDestinyIds: getMissingDestinyIdsImpl,
+  getRandomDestinyOffers: getRandomDestinyOffersImpl,
+  getAlignmentLabel: getAlignmentLabelImpl,
+  formatResultLabel: formatResultLabelImpl,
+  applyDestinyBonuses: applyDestinyBonusesImpl,
+  createDestinyPreviewSnapshot: createDestinyPreviewSnapshotImpl,
+  describeDestinyStatDelta: describeDestinyStatDeltaImpl,
+  getPointifyPreviewRows: getPointifyPreviewRowsImpl,
+  describePointifyPreview: describePointifyPreviewImpl,
+  getPointifyEquipPreview: getPointifyEquipPreviewImpl,
+} = window.DestinyHelpers;
+const {
+  formatTime: formatTimeImpl,
+  setToast: setToastImpl,
+  closeModal: closeModalImpl,
+  renderModal: renderModalImpl,
+  handleModalHotkeys: handleModalHotkeysImpl,
+  showOverlay: showOverlayImpl,
+  syncPauseButton: syncPauseButtonImpl,
+  describePathStage: describePathStageImpl,
+  refreshPhase: refreshPhaseImpl,
+  renderSkillBar: renderSkillBarImpl,
+  updateHud: updateHudImpl,
+  renderGameToText: renderGameToTextImpl,
+} = window.GameUI;
+const {
+  installDebugHooks,
+} = window.GameDebug;
 
 function createCampaignState() {
-  return {
-    runIndex: 1,
-    stageIndex: 1,
-    stageType: "small",
-    stageKills: 0,
-    targetKills: 12,
-    miniBossSpawned: false,
-    miniBossDefeated: false,
-    bossSpawned: false,
-  };
+  return createCampaignStateImpl();
 }
 
-const skills = {
-  sword: {
-    id: "sword",
-    name: "飞剑诀",
-    description: "自动追踪最近敌人的飞剑术。",
-    baseCooldown: 0.9,
-    baseDamage: 24,
-    baseProjectiles: 1,
-  },
-  thunder: {
-    id: "thunder",
-    name: "掌心雷",
-    description: "对最近敌人施加落雷，可连锁。",
-    baseCooldown: 1.4,
-    baseDamage: 28,
-    splash: 54,
-  },
-  flame: {
-    id: "flame",
-    name: "火环术",
-    description: "环身火域持续灼烧近身敌人。",
-    radius: 90,
-    tick: 0.5,
-    damage: 22,
-  },
-  guard: {
-    id: "guard",
-    name: "金钟罩",
-    description: "生成护盾并在破裂时反震。",
-    shield: 60,
-    recharge: 12,
-  },
-};
-
-const activeSkillTable = {
-  sword: { baseCooldown: 3 },
-  thunder: { baseCooldown: 3 },
-  guard: { baseCooldown: 3 },
-  flame: { baseCooldown: 3 },
-};
-
-const enemies = BALANCE.monsterTable;
-
 function createMetaState() {
-  return {
-    points: 0,
-    upgrades: {},
-    runs: 0,
-    bestKills: 0,
-    lastResult: null,
-    destiny: {
-      owned: {},
-      equipped: [],
-      maxSlots: DESTINY_SLOT_CAP,
-    },
-  };
+  return createMetaStateImpl();
 }
 
 function loadMetaState() {
-  try {
-    const raw = localStorage.getItem(META.storageKey);
-    if (!raw) return createMetaState();
-    return { ...createMetaState(), ...JSON.parse(raw) };
-  } catch {
-    return createMetaState();
-  }
-}
-
-function saveMetaState() {
-  localStorage.setItem(META.storageKey, JSON.stringify(metaState));
+  return loadMetaStateImpl();
 }
 
 const metaState = loadMetaState();
 let pendingInfusionContinuation = null;
 
+function saveMetaState() {
+  saveMetaStateImpl(metaState);
+}
+
 function ensureMetaCollections() {
-  if (!metaState.destiny) metaState.destiny = { owned: {}, equipped: [], maxSlots: DESTINY_SLOT_CAP };
-  if (!metaState.destiny.owned) metaState.destiny.owned = {};
-  if (!metaState.destiny.equipped) metaState.destiny.equipped = [];
-  if (!metaState.destiny.maxSlots) metaState.destiny.maxSlots = DESTINY_SLOT_CAP;
+  ensureMetaCollectionsImpl(metaState);
 }
 
 ensureMetaCollections();
 
+function getEntryAlignment(entry) {
+  return getEntryAlignmentImpl(entry);
+}
+
+function getDestinyText(def, alignment) {
+  return getDestinyTextImpl(def, alignment);
+}
+
 function getOwnedDestinyEntries() {
-  return Object.entries(metaState.destiny.owned).map(([id, entry]) => ({ id, ...entry, def: destinyCatalog[id] })).filter((entry) => entry.def);
+  return getOwnedDestinyEntriesImpl(metaState);
 }
 
 function getEquippedDestinyEntries() {
-  return metaState.destiny.equipped
-    .map((id) => metaState.destiny.owned[id] ? { id, ...metaState.destiny.owned[id], def: destinyCatalog[id] } : null)
-    .filter(Boolean);
+  return getEquippedDestinyEntriesImpl(metaState);
 }
 
 function getUnequippedOwnedDestinyEntries() {
-  const equippedSet = new Set(metaState.destiny.equipped);
-  return getOwnedDestinyEntries().filter((entry) => !equippedSet.has(entry.id));
+  return getUnequippedOwnedDestinyEntriesImpl(metaState);
 }
 
 function getAlignmentCounts() {
-  const counts = { white: 0, black: 0, mixed: 0 };
-  getEquippedDestinyEntries().forEach((entry) => {
-    counts[entry.def.alignment || "mixed"] += 1;
-  });
-  return counts;
+  return getAlignmentCountsImpl(metaState);
 }
 
 function getAlignmentResult() {
-  const counts = getAlignmentCounts();
-  const hasHumanEnding = getEquippedDestinyEntries().some((entry) => entry.id === HUMAN_ENDING_DESTINY_ID);
-  if (hasHumanEnding) return "成人（Be Human）";
-  if (counts.white > counts.black) return "成仙";
-  if (counts.black > counts.white) return "化魔";
-  if (state.whitePath.value > state.blackPath.value) return "成仙";
-  if (state.blackPath.value > state.whitePath.value) return "化魔";
-  return "成仙";
-}
-
-function getDestinyWeight(alignment) {
-  let weight = alignment === "mixed" ? 0.9 : 1;
-  const counts = getAlignmentCounts();
-  if (alignment === "white" && state?.whitePath?.full) weight *= 1.1;
-  if (alignment === "black" && state?.blackPath?.full) weight *= 1.1;
-  if (alignment === "white" && counts.white >= 2) weight *= 1.25;
-  if (alignment === "black" && counts.black >= 2) weight *= 1.25;
-  if (alignment === "white" && counts.white >= 4) weight *= 1.6;
-  if (alignment === "black" && counts.black >= 4) weight *= 1.6;
-  return weight;
-}
-
-function weightedPick(items) {
-  const total = items.reduce((sum, item) => sum + item.weight, 0);
-  let roll = Math.random() * total;
-  for (const item of items) {
-    roll -= item.weight;
-    if (roll <= 0) return item.value;
-  }
-  return items[items.length - 1].value;
+  return getAlignmentResultImpl(state, metaState);
 }
 
 function getMissingDestinyIds() {
-  return Object.keys(destinyCatalog).filter((id) => !metaState.destiny.owned[id]);
+  return getMissingDestinyIdsImpl(metaState);
 }
 
 function getRandomDestinyOffers(count = 3) {
-  const pool = getMissingDestinyIds();
-  const offers = [];
-  while (pool.length > 0 && offers.length < count) {
-    const id = weightedPick(
-      pool.map((destinyId) => ({
-        value: destinyId,
-        weight: getDestinyWeight(destinyCatalog[destinyId].alignment),
-      })),
-    );
-    pool.splice(pool.indexOf(id), 1);
-    offers.push({ id });
-  }
-  return offers;
+  return getRandomDestinyOffersImpl(metaState, state, count);
 }
 
 function describeDestiny(id, alignment = destinyCatalog[id].alignment, level = 1) {
@@ -399,302 +189,39 @@ function describeDestiny(id, alignment = destinyCatalog[id].alignment, level = 1
 }
 
 function getAlignmentLabel(alignment) {
-  if (alignment === "white") return "白道";
-  if (alignment === "black") return "黑道";
-  return "混元";
-}
-
-function getDaoPointifyDistributionText(color) {
-  return color === "white"
-    ? "白道 94% / 混元 4% / 黑道 2%"
-    : "黑道 94% / 混元 4% / 白道 2%";
+  return getAlignmentLabelImpl(alignment);
 }
 
 function formatResultLabel(result) {
-  if (result === RESULT_DEATH) return "陨落";
-  if (result === RESULT_CLEAR) return "通关";
-  return result;
-}
-
-function getDestinyEntriesFromEquippedIds(equippedIds) {
-  return equippedIds
-    .map((id) => metaState.destiny.owned[id] ? { id, ...metaState.destiny.owned[id], def: destinyCatalog[id] } : null)
-    .filter((entry) => entry?.def);
-}
-
-function applyDestinyBonusesFromEntries(entries, player, mods) {
-  entries.forEach((entry) => {
-    const level = entry.level || 1;
-    const alignment = entry.def.alignment || "mixed";
-    switch (entry.id) {
-      case "vital":
-        if (alignment === "white") {
-          player.maxHp += 18 * level;
-          player.regen += 0.08 * level;
-        } else if (alignment === "black") {
-          mods.damageMult += 0.06 * level;
-        } else {
-          player.pickupRange += 10 * level;
-        }
-        break;
-      case "spirit":
-        if (alignment === "white") mods.xpGainMult += 0.1 * level;
-        else if (alignment === "black") player.critChance += 0.04 * level;
-        else player.speed += 10 * level;
-        break;
-      case "river":
-        if (alignment === "white") mods.whiteGainMult += 0.12 * level;
-        else if (alignment === "black") mods.blackGainMult += 0.12 * level;
-        else {
-          mods.whiteGainMult += 0.05 * level;
-          mods.blackGainMult += 0.05 * level;
-        }
-        break;
-      case "blade":
-        if (alignment === "white") mods.incomingMult *= Math.max(0.65, 1 - 0.08 * level);
-        else if (alignment === "black") player.critDamage += 0.18 * level;
-        else player.globalCooldown *= Math.max(0.75, 1 - 0.06 * level);
-        break;
-      case "thunder":
-        if (alignment === "white") {
-          player.regen += 0.06 * level;
-          mods.xpGainMult += 0.06 * level;
-        } else if (alignment === "black") {
-          mods.damageMult += 0.05 * level;
-          player.globalCooldown *= Math.max(0.72, 1 - 0.05 * level);
-        } else {
-          player.speed += 8 * level;
-          player.pickupRange += 8 * level;
-        }
-        break;
-      case "ward":
-        if (alignment === "white") {
-          player.maxHp += 14 * level;
-          mods.whiteGainMult += 0.08 * level;
-        } else if (alignment === "black") {
-          player.critChance += 0.03 * level;
-          mods.blackGainMult += 0.08 * level;
-        } else {
-          mods.damageMult += 0.04 * level;
-        }
-        break;
-      case "reaper":
-        if (alignment === "white") {
-          player.maxHp += 24 * level;
-          player.regen += 0.1 * level;
-        } else if (alignment === "black") {
-          mods.damageMult += 0.1 * level;
-          player.critChance += 0.04 * level;
-        } else {
-          mods.damageMult += 0.05 * level;
-          mods.xpGainMult += 0.06 * level;
-        }
-        break;
-      case "lotus":
-        if (alignment === "white") {
-          mods.xpGainMult += 0.14 * level;
-          player.regen += 0.1 * level;
-        } else if (alignment === "black") {
-          mods.blackGainMult += 0.14 * level;
-          mods.damageMult += 0.06 * level;
-        } else {
-          player.speed += 12 * level;
-          player.pickupRange += 12 * level;
-        }
-        break;
-      default:
-        break;
-    }
-  });
+  return formatResultLabelImpl(result);
 }
 
 function applyDestinyBonuses(player, mods) {
-  applyDestinyBonusesFromEntries(getEquippedDestinyEntries(), player, mods);
+  applyDestinyBonusesImpl(metaState, player, mods);
 }
 
 function createDestinyPreviewSnapshot(equippedIds = metaState.destiny.equipped) {
-  const hpBonus = (metaState.upgrades.hp1 || 0) * META.upgrades.hp1.effectPerLevel;
-  const xpGainMult = 1 + (metaState.upgrades.xp1 || 0) * META.upgrades.xp1.effectPerLevel;
-  const pickupMult = 1 + (metaState.upgrades.pickup1 || 0) * META.upgrades.pickup1.effectPerLevel;
-  const whiteGainMult = 1 + (metaState.upgrades.white1 || 0) * META.upgrades.white1.effectPerLevel;
-  const blackGainMult = 1 + (metaState.upgrades.black1 || 0) * META.upgrades.black1.effectPerLevel;
-  const player = {
-    maxHp: baseStats.maxHp + hpBonus,
-    speed: baseStats.speed,
-    critChance: baseStats.critChance,
-    critDamage: baseStats.critDamage,
-    globalCooldown: 1,
-    pickupRange: baseStats.pickupRange * pickupMult,
-    regen: baseStats.regen,
-  };
-  const mods = {
-    xpGainMult,
-    whiteGainMult,
-    blackGainMult,
-    damageMult: 1,
-    incomingMult: 1,
-  };
-  applyDestinyBonusesFromEntries(getDestinyEntriesFromEquippedIds(equippedIds), player, mods);
-  return {
-    maxHp: player.maxHp,
-    regen: player.regen,
-    speed: player.speed,
-    pickupRange: player.pickupRange,
-    critChance: player.critChance,
-    critDamage: player.critDamage,
-    cooldownRate: 1 / player.globalCooldown,
-    damageMult: mods.damageMult,
-    incomingMult: mods.incomingMult,
-    xpGainMult: mods.xpGainMult,
-    whiteGainMult: mods.whiteGainMult,
-    blackGainMult: mods.blackGainMult,
-  };
-}
-
-function formatSignedStat(value, digits = 0) {
-  const rounded = digits > 0 ? value.toFixed(digits) : Math.round(value).toString();
-  return `${value >= 0 ? "+" : ""}${rounded}`;
+  return createDestinyPreviewSnapshotImpl(metaState, equippedIds);
 }
 
 function describeDestinyStatDelta(before, after) {
-  const deltas = [];
-  if (after.maxHp !== before.maxHp) deltas.push(`生命 ${formatSignedStat(after.maxHp - before.maxHp)}`);
-  if (after.regen !== before.regen) deltas.push(`回复 ${formatSignedStat(after.regen - before.regen, 2)}`);
-  if (after.damageMult !== before.damageMult) deltas.push(`伤害 ${formatSignedStat((after.damageMult - before.damageMult) * 100)}%`);
-  if (after.incomingMult !== before.incomingMult) deltas.push(`承伤 ${formatSignedStat((after.incomingMult - before.incomingMult) * 100)}%`);
-  if (after.critChance !== before.critChance) deltas.push(`暴击 ${formatSignedStat((after.critChance - before.critChance) * 100)}%`);
-  if (after.critDamage !== before.critDamage) deltas.push(`暴伤 ${formatSignedStat((after.critDamage - before.critDamage) * 100)}%`);
-  if (after.speed !== before.speed) deltas.push(`移速 ${formatSignedStat(after.speed - before.speed)}`);
-  if (after.pickupRange !== before.pickupRange) deltas.push(`拾取 ${formatSignedStat(after.pickupRange - before.pickupRange)}`);
-  if (after.cooldownRate !== before.cooldownRate) deltas.push(`冷却效率 ${formatSignedStat((after.cooldownRate - before.cooldownRate) * 100)}%`);
-  if (after.xpGainMult !== before.xpGainMult) deltas.push(`经验 ${formatSignedStat((after.xpGainMult - before.xpGainMult) * 100)}%`);
-  if (after.whiteGainMult !== before.whiteGainMult) deltas.push(`白槽 ${formatSignedStat((after.whiteGainMult - before.whiteGainMult) * 100)}%`);
-  if (after.blackGainMult !== before.blackGainMult) deltas.push(`黑槽 ${formatSignedStat((after.blackGainMult - before.blackGainMult) * 100)}%`);
-  return deltas.length ? `预览：${deltas.join(" | ")}` : "预览：属性无变化";
+  return describeDestinyStatDeltaImpl(before, after);
 }
 
 function getPointifyPreviewRows(targetId, color) {
-  const poolIds = Object.keys(destinyCatalog).filter((id) => id === targetId || !metaState.destiny.owned[id]);
-  const availableAlignments = [...new Set(poolIds.map((id) => destinyCatalog[id].alignment))];
-  const table = (DAO_POINTIFY_WEIGHTS[color] || DAO_POINTIFY_WEIGHTS.white)
-    .filter((entry) => availableAlignments.includes(entry.value));
-  const totalWeight = table.reduce((sum, entry) => sum + entry.weight, 0) || 1;
-  return table.map((entry) => {
-    const candidates = poolIds.filter((id) => destinyCatalog[id].alignment === entry.value);
-    const names = candidates.map((id) => destinyCatalog[id].name);
-    return {
-      alignment: entry.value,
-      chance: (entry.weight / totalWeight) * 100,
-      names,
-    };
-  });
+  return getPointifyPreviewRowsImpl(metaState, targetId, color);
 }
 
 function describePointifyPreview(targetId, color) {
-  return getPointifyPreviewRows(targetId, color)
-    .map((row) => `${getAlignmentLabel(row.alignment)} ${row.chance.toFixed(1)}% -> ${row.names.join(" / ")}`)
-    .join(" | ");
+  return describePointifyPreviewImpl(metaState, targetId, color);
 }
 
 function getPointifyEquipPreview(nextId) {
-  if (metaState.destiny.equipped.length >= metaState.destiny.maxSlots) {
-    return "当前命盘已满，可在“更换命格”中查看替换后的属性变化。";
-  }
-  const before = createDestinyPreviewSnapshot(metaState.destiny.equipped);
-  const after = createDestinyPreviewSnapshot([...metaState.destiny.equipped, nextId]);
-  return `若稍后装配：${describeDestinyStatDelta(before, after).replace("预览：", "")}`;
-}
-
-function makePathState(color) {
-  return {
-    color,
-    value: 0,
-    cap: PATH_COMBAT.cap || FIRST_PATH_CAP,
-    full: false,
-    tier1Triggered: false,
-    tier2Triggered: false,
-  };
+  return getPointifyEquipPreviewImpl(metaState, nextId);
 }
 
 function createState() {
-  const hpBonus = (metaState.upgrades.hp1 || 0) * META.upgrades.hp1.effectPerLevel;
-  const xpGainMult = 1 + (metaState.upgrades.xp1 || 0) * META.upgrades.xp1.effectPerLevel;
-  const pickupMult = 1 + (metaState.upgrades.pickup1 || 0) * META.upgrades.pickup1.effectPerLevel;
-  const whiteGainMult = 1 + (metaState.upgrades.white1 || 0) * META.upgrades.white1.effectPerLevel;
-  const blackGainMult = 1 + (metaState.upgrades.black1 || 0) * META.upgrades.black1.effectPerLevel;
-  const mods = {
-    xpGainMult,
-    whiteGainMult,
-    blackGainMult,
-    damageMult: 1,
-    incomingMult: 1,
-  };
-  const player = {
-    x: WIDTH / 2,
-    y: HEIGHT / 2,
-    radius: 16,
-    maxHp: baseStats.maxHp + hpBonus,
-    hp: baseStats.maxHp + hpBonus,
-    speed: baseStats.speed,
-    critChance: baseStats.critChance,
-    critDamage: baseStats.critDamage,
-    globalCooldown: 1,
-    pickupRange: baseStats.pickupRange * pickupMult,
-    regen: baseStats.regen,
-    barrier: 0,
-    invulnTimer: 0,
-    skills: {},
-    skillOrder: [],
-    level: 1,
-    xp: 0,
-    skillFocus: {},
-  };
-  applyDestinyBonuses(player, mods);
-  player.hp = player.maxHp;
-  return {
-    mode: "menu",
-    running: false,
-    paused: false,
-    time: 0,
-    runStartTime: 0,
-    realLast: 0,
-    spawnTimer: 0,
-    eliteSchedule: [...BALANCE.waves.eliteSchedule],
-    eliteIndex: 0,
-    enemies: [],
-    projectiles: [],
-    enemyProjectiles: [],
-    drops: [],
-    pulses: [],
-    boss: null,
-    bossFight: false,
-    result: null,
-    player,
-    xpGainMult,
-    whiteGainMult,
-    blackGainMult,
-    whitePath: makePathState("white"),
-    blackPath: makePathState("black"),
-    phaseLabel: "待开始",
-    currentModal: null,
-    pendingLevelUps: 0,
-    statuses: [],
-    totalKills: 0,
-    modalOptions: null,
-    campaign: createCampaignState(),
-    currentDestinyOffers: [],
-    lastRunPoints: 0,
-    pendingMiniBossReward: false,
-    whiteInfusionPoints: 0,
-    blackInfusionPoints: 0,
-    noHitTimer: 0,
-    whiteUntouchedRewardTimer: 0,
-    whiteKillHealCooldown: 0,
-    blackLowHpKillCooldown: 0,
-    blackMomentumStacks: 0,
-    blackMomentumTimer: 0,
-    blackMomentumCooldown: 0,
-  };
+  return createStateImpl(metaState, applyDestinyBonuses, WIDTH, HEIGHT);
 }
 
 const state = createState();
@@ -733,70 +260,52 @@ function getTargetsWithinRadius(origin, radius) {
 }
 
 function formatTime(totalSeconds) {
-  const seconds = Math.ceil(totalSeconds);
-  const min = Math.floor(seconds / 60);
-  const sec = seconds % 60;
-  return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  return formatTimeImpl(totalSeconds);
 }
 
 function setToast(message) {
-  dom.toast.textContent = message;
-  dom.toast.classList.add("show");
-  clearTimeout(toastTimeout);
-  toastTimeout = setTimeout(() => {
-    dom.toast.classList.remove("show");
-  }, 1800);
+  setToastImpl(dom, uiState, message);
 }
 
 function closeModal() {
-  state.currentModal = null;
-  state.modalOptions = null;
-  dom.modalRoot.classList.add("hidden");
-  dom.modalRoot.innerHTML = "";
+  closeModalImpl(state, dom, syncPauseButton);
 }
 
 function renderModal({ title, body, bodyHtml = "", choices, actions = [], className = "" }) {
-  state.modalOptions = { choices, actions };
-  dom.modalRoot.classList.remove("hidden");
-  dom.modalRoot.innerHTML = `
-    <div class="modal-card ${className}">
-      <div class="modal-title">${title}</div>
-      <div class="modal-body">${body}</div>
-      ${bodyHtml}
-      <div class="choice-list">
-        ${choices.map((choice, index) => `
-          <button class="choice-card" type="button" data-choice="${index}" ${choice.disabled ? "disabled" : ""}>
-            <strong>${choice.title}</strong>
-            <span>${choice.body}</span>
-          </button>
-        `).join("")}
-      </div>
-      <div class="modal-actions">
-        ${actions.map((action, index) => `<button class="action-btn" type="button" data-action="${index}">${action.label}</button>`).join("")}
-      </div>
-    </div>
-  `;
-  dom.modalRoot.querySelectorAll("[data-choice]").forEach((button) => {
-    button.addEventListener("click", () => choices[Number(button.dataset.choice)].onClick());
-  });
-  dom.modalRoot.querySelectorAll("[data-action]").forEach((button) => {
-    button.addEventListener("click", () => actions[Number(button.dataset.action)].onClick());
-  });
+  renderModalImpl(state, dom, { title, body, bodyHtml, choices, actions, className }, syncPauseButton);
 }
 
 function handleModalHotkeys(key) {
-  if (!state.modalOptions) return false;
-  const { choices, actions } = state.modalOptions;
-  if (key === "1" && choices[0]) { choices[0].onClick(); return true; }
-  if (key === "2" && choices[1]) { choices[1].onClick(); return true; }
-  if (key === "3" && choices[2]) { choices[2].onClick(); return true; }
-  if ((key === "enter" || key === "space") && choices[0]) { choices[0].onClick(); return true; }
-  if (key === "escape" && actions[0]) { actions[0].onClick(); return true; }
-  return false;
+  return handleModalHotkeysImpl(state, key);
 }
 
 function showOverlay(show) {
-  dom.overlayMessage.classList.toggle("show", show);
+  showOverlayImpl(dom, show);
+}
+
+function isGameplayRunning() {
+  return state.mode === "playing" && state.running;
+}
+
+function isGameplayInputBlocked() {
+  return !isGameplayRunning() || state.paused || state.manualPause || !!state.currentModal;
+}
+
+function canToggleManualPause() {
+  return isGameplayRunning() && !state.currentModal;
+}
+
+function syncPauseButton() {
+  syncPauseButtonImpl(dom, state, canToggleManualPause);
+}
+
+function toggleManualPause() {
+  if (!canToggleManualPause()) return;
+  state.manualPause = !state.manualPause;
+  if (!state.manualPause) state.realLast = 0;
+  syncPauseButton();
+  render();
+  setToast(state.manualPause ? "\u5df2\u6682\u505c" : "\u7ee7\u7eed\u8bd5\u70bc");
 }
 
 function xpNeeded(level) {
@@ -1137,7 +646,7 @@ function emitStabilizePulse(radius) {
 }
 
 function tryReleasePath(color) {
-  if (state.mode !== "playing" || state.paused || state.currentModal) return false;
+  if (isGameplayInputBlocked()) return false;
   const path = color === "white" ? state.whitePath : state.blackPath;
   if (!path.full) return false;
   if (color === "white") {
@@ -1247,6 +756,7 @@ function unlockSkill(gameState, id) {
 
 function resetGame() {
   dom.startBtn.blur();
+  state.manualPause = false;
   const fresh = createState();
   Object.keys(state).forEach((key) => delete state[key]);
   Object.assign(state, fresh);
@@ -1306,7 +816,6 @@ function getNextStageLabel() {
 
 function buildStagePreparationHtml() {
   const equipped = getEquippedDestinyEntries();
-  const backpack = getUnequippedOwnedDestinyEntries();
   const skillsHtml = state.player.skillOrder.length
     ? state.player.skillOrder.map((id, index) => {
       const skill = state.player.skills[id];
@@ -1321,24 +830,18 @@ function buildStagePreparationHtml() {
     }).join("")
     : '<div class="choice-card"><strong>暂无法术</strong><span>当前没有已习得法术。</span></div>';
   const equippedHtml = equipped.length
-    ? equipped.map((entry) => `<div class="choice-card"><strong>${entry.def.name}</strong><span>${getAlignmentLabel(entry.def.alignment)} | Lv.${entry.level}</span></div>`).join("")
+    ? equipped.map((entry) => `<div class="choice-card"><strong>${entry.def.name}</strong><span>${getAlignmentLabel(getEntryAlignment(entry))} | Lv.${entry.level}</span></div>`).join("")
     : '<div class="choice-card"><strong>未装备命格</strong><span>当前没有已装备命格。</span></div>';
-  const backpackHtml = backpack.length
-    ? backpack.map((entry) => `<div class="choice-card"><strong>${entry.def.name}</strong><span>${getAlignmentLabel(entry.def.alignment)} | Lv.${entry.level}</span></div>`).join("")
-    : '<div class="choice-card"><strong>背包为空</strong><span>当前没有未装配命格。</span></div>';
   return `
     <div class="reincarnation-summary">
       <div class="summary-card"><div class="summary-label">下一场</div><div class="summary-value">${getNextStageLabel()}</div></div>
-      <div class="summary-card"><div class="summary-label">已装备命格</div><div class="summary-value">${equipped.length}</div></div>
-      <div class="summary-card"><div class="summary-label">背包命格</div><div class="summary-value">${backpack.length}</div></div>
+      <div class="summary-card"><div class="summary-label">命格槽</div><div class="summary-value">${equipped.length}/${metaState.destiny.maxSlots}</div></div>
       <div class="summary-card"><div class="summary-label">当前法术</div><div class="summary-value">${state.player.skillOrder.length}</div></div>
       <div class="summary-card"><div class="summary-label">白点化点</div><div class="summary-value">${state.whiteInfusionPoints}</div></div>
       <div class="summary-card"><div class="summary-label">黑点化点</div><div class="summary-value">${state.blackInfusionPoints}</div></div>
     </div>
-    <div class="reincarnation-section-title">已装备命格</div>
+    <div class="reincarnation-section-title">当前命格</div>
     <div class="choice-list">${equippedHtml}</div>
-    <div class="reincarnation-section-title">命格背包</div>
-    <div class="choice-list">${backpackHtml}</div>
     <div class="reincarnation-section-title">当前法术</div>
     <div class="choice-list">${skillsHtml}</div>
   `;
@@ -1359,7 +862,7 @@ function openReplaceEquippedModalForBackpack(backpackId) {
       body: (() => {
         const nextEquipped = metaState.destiny.equipped.map((id) => (id === entry.id ? backpackId : id));
         const nextSnapshot = createDestinyPreviewSnapshot(nextEquipped);
-        return `${getAlignmentLabel(entry.def.alignment)} | Lv.${entry.level} -> ${backpackDef.name} ${getAlignmentLabel(backpackDef.alignment)} | Lv.${backpackEntry.level}<br>${describeDestinyStatDelta(currentSnapshot, nextSnapshot)}`;
+        return `${getAlignmentLabel(getEntryAlignment(entry))} | Lv.${entry.level} -> ${backpackDef.name} ${getAlignmentLabel(backpackEntry.alignment || backpackDef.alignment)} | Lv.${backpackEntry.level}<br>${describeDestinyStatDelta(currentSnapshot, nextSnapshot)}`;
       })(),
       onClick: () => {
         const index = metaState.destiny.equipped.indexOf(entry.id);
@@ -1397,9 +900,9 @@ function openStageLoadoutModal() {
         body: metaState.destiny.equipped.length < metaState.destiny.maxSlots
           ? (() => {
             const nextSnapshot = createDestinyPreviewSnapshot([...metaState.destiny.equipped, entry.id]);
-            return `${getAlignmentLabel(entry.def.alignment)} | Lv.${entry.level} | 直接装备到空位<br>${describeDestinyStatDelta(currentSnapshot, nextSnapshot)}`;
+            return `${getAlignmentLabel(getEntryAlignment(entry))} | Lv.${entry.level} | 直接装备到空位<br>${describeDestinyStatDelta(currentSnapshot, nextSnapshot)}`;
           })()
-          : `${getAlignmentLabel(entry.def.alignment)} | Lv.${entry.level} | 选择后可查看每个替换方案的属性预览`,
+          : `${getAlignmentLabel(getEntryAlignment(entry))} | Lv.${entry.level} | 选择后可查看每个替换方案的属性预览`,
         onClick: () => {
           if (metaState.destiny.equipped.length < metaState.destiny.maxSlots) {
             metaState.destiny.equipped.push(entry.id);
@@ -1451,24 +954,19 @@ function openNextBattleConfirmModal() {
 }
 
 function openStagePreparationModal() {
-  const canPointify = hasInfusionPoints() && getUnequippedOwnedDestinyEntries().length > 0;
+  const canPointify = hasInfusionPoints() && getEquippedDestinyEntries().length > 0;
   state.paused = true;
   state.currentModal = "stage-prep";
   renderModal({
     title: "战前整备",
-    body: "击败小Boss后，先查看命格背包和当前法术；确认无误后再进入下一场战斗。",
+    body: "击败小Boss后，先查看当前已镶嵌命格和法术；确认无误后再进入下一场战斗。",
     bodyHtml: buildStagePreparationHtml(),
     choices: [
       {
-        title: "更换命格",
-        body: "查看命格背包，并将背包命格装备到空位或替换已装备命格。",
-        onClick: () => openStageLoadoutModal(),
-      },
-      {
         title: "道途点化",
         body: canPointify
-          ? `消耗白/黑点化点重铸未装配命格。当前白点 ${state.whiteInfusionPoints} | 黑点 ${state.blackInfusionPoints}`
-          : "当前没有可用点化点，或没有未装配命格可供点化。",
+          ? `消耗白/黑点化点重抽当前已镶嵌命格。当前白点 ${state.whiteInfusionPoints} | 黑点 ${state.blackInfusionPoints}`
+          : "当前没有可用点化点，或没有已镶嵌命格可供点化。",
         onClick: () => {
           if (!canPointify) return;
           openDaoPointifyModal(() => openStagePreparationModal());
@@ -1543,20 +1041,25 @@ function maybeHandlePostBossInfusion(continuation) {
 
 function acquireDestiny(id) {
   if (metaState.destiny.owned[id]) return;
-  metaState.destiny.owned[id] = {
-    level: 1,
-  };
   if (metaState.destiny.equipped.length < metaState.destiny.maxSlots) {
+    metaState.destiny.owned[id] = {
+      level: 1,
+      alignment: destinyCatalog[id].alignment,
+    };
     metaState.destiny.equipped.push(id);
     saveMetaState();
     setToast(`获得命格 ${destinyCatalog[id].name}`);
     advanceCampaign();
     return;
   }
-  openEquipDestinyModal(id);
+  openEquipDestinyModal(id, {
+    title: "命格槽已满",
+    body: `命格槽最多 ${metaState.destiny.maxSlots} 个。选择一枚当前命格，用 ${destinyCatalog[id].name} 替换。`,
+    onComplete: () => advanceCampaign(),
+  });
 }
 
-function openEquipDestinyModal(newId) {
+function openEquipDestinyModal(newId, { title = "命格槽已满", body = "选择一枚当前命格进行替换。", onComplete = () => {} } = {}) {
   state.paused = true;
   state.currentModal = "equip-destiny";
   const choices = getEquippedDestinyEntries().map((entry) => ({
@@ -1565,33 +1068,38 @@ function openEquipDestinyModal(newId) {
     onClick: () => {
       const index = metaState.destiny.equipped.indexOf(entry.id);
       if (index >= 0) metaState.destiny.equipped[index] = newId;
+      delete metaState.destiny.owned[entry.id];
+      metaState.destiny.owned[newId] = {
+        level: 1,
+        alignment: destinyCatalog[newId].alignment,
+      };
       saveMetaState();
       closeModal();
       state.paused = false;
-      advanceCampaign();
+      onComplete();
     },
   }));
   renderModal({
-    title: "命盘已满",
-    body: "选择一枚已装备命格进行替换，或先收入藏库。",
+    title,
+    body,
     choices,
     actions: [{
-      label: "收入藏库",
+      label: "暂不替换",
       onClick: () => {
-        saveMetaState();
         closeModal();
         state.paused = false;
-        advanceCampaign();
+        onComplete();
       },
     }],
   });
 }
 
-function rollDaoPointifyAlignment(color, availableAlignments) {
-  const table = DAO_POINTIFY_WEIGHTS[color] || DAO_POINTIFY_WEIGHTS.white;
-  const filtered = table.filter((entry) => availableAlignments.includes(entry.value));
-  if (!filtered.length) return availableAlignments[0] || "mixed";
-  return weightedPick(filtered);
+function getPointifyBoardPreview(targetId, nextId) {
+  const currentEquipped = [...metaState.destiny.equipped];
+  const before = createDestinyPreviewSnapshot(currentEquipped);
+  const afterIds = currentEquipped.map((id) => (id === targetId ? nextId : id));
+  const after = createDestinyPreviewSnapshot(afterIds);
+  return describeDestinyStatDelta(before, after);
 }
 
 function pointifyDestiny(targetId, color) {
@@ -1601,14 +1109,26 @@ function pointifyDestiny(targetId, color) {
   if (color === "black" && state.blackInfusionPoints <= 0) return;
   const previousDef = destinyCatalog[targetId];
   if (!previousDef) return;
-  const poolIds = Object.keys(destinyCatalog).filter((id) => id === targetId || !metaState.destiny.owned[id]);
-  const availableAlignments = [...new Set(poolIds.map((id) => destinyCatalog[id].alignment))];
-  const nextAlignment = rollDaoPointifyAlignment(color, availableAlignments);
-  const candidateIds = poolIds.filter((id) => destinyCatalog[id].alignment === nextAlignment);
-  const nextId = candidateIds[Math.floor(Math.random() * candidateIds.length)] || targetId;
+  const previousAlignment = getEntryAlignment({ ...entry, def: previousDef });
+  const candidateIds = Object.keys(destinyCatalog).filter((id) => {
+    const def = destinyCatalog[id];
+    if (!def || def.alignment !== color) return false;
+    return id === targetId || !metaState.destiny.owned[id];
+  });
+  const rerollIds = candidateIds.filter((id) => id !== targetId);
+  const finalCandidateIds = rerollIds.length ? rerollIds : candidateIds;
+  if (!finalCandidateIds.length) {
+    setToast(`${color === "white" ? "白道" : "黑道"}命格池当前没有可重抽结果`);
+    return;
+  }
+  const nextId = finalCandidateIds[Math.floor(Math.random() * finalCandidateIds.length)] || targetId;
   const nextDef = destinyCatalog[nextId];
+  const equipIndex = metaState.destiny.equipped.indexOf(targetId);
   delete metaState.destiny.owned[targetId];
   metaState.destiny.owned[nextId] = { level: entry.level || 1 };
+  if (equipIndex >= 0) {
+    metaState.destiny.equipped[equipIndex] = nextId;
+  }
   if (color === "white") {
     state.whiteInfusionPoints -= 1;
   } else {
@@ -1619,21 +1139,23 @@ function pointifyDestiny(targetId, color) {
     color,
     previousId: targetId,
     previousDef,
+    previousAlignment,
     nextId,
     nextDef,
+    nextAlignment: nextDef.alignment,
     level: entry.level || 1,
   });
 }
 
 function openDaoPointifyModal(continuation = null) {
   if (continuation) pendingInfusionContinuation = continuation;
-  const targets = getUnequippedOwnedDestinyEntries();
+  const targets = getEquippedDestinyEntries();
   if (!hasInfusionPoints()) {
     continueInfusionFlow();
     return;
   }
   if (!targets.length) {
-    setToast("暂无未装配命格可供点化，本次机会保留。");
+    setToast("暂无已镶嵌命格可供点化，本次机会保留。");
     continueInfusionFlow();
     return;
   }
@@ -1641,14 +1163,14 @@ function openDaoPointifyModal(continuation = null) {
   if (state.whiteInfusionPoints > 0) {
     choices.push({
       title: "白道点化",
-      body: `消耗 1 点白点化点，重铸一枚未装配命格。当前白点化点：${state.whiteInfusionPoints}`,
+      body: `消耗 1 点白点化点，重抽一枚当前命格。当前白点化点：${state.whiteInfusionPoints}`,
       onClick: () => openDaoPointifyTargetModal("white"),
     });
   }
   if (state.blackInfusionPoints > 0) {
     choices.push({
       title: "黑道点化",
-      body: `消耗 1 点黑点化点，重铸一枚未装配命格。当前黑点化点：${state.blackInfusionPoints}`,
+      body: `消耗 1 点黑点化点，重抽一枚当前命格。当前黑点化点：${state.blackInfusionPoints}`,
       onClick: () => openDaoPointifyTargetModal("black"),
     });
   }
@@ -1660,7 +1182,7 @@ function openDaoPointifyModal(continuation = null) {
   state.currentModal = "dao-pointify";
   renderModal({
     title: "道途点化",
-    body: "消耗白/黑点化点，重铸一枚未装配命格。点化点来自局内黑白槽累计满槽次数，不消耗当前黑白槽。",
+    body: "消耗白/黑点化点，将一枚当前命格放回池中，再从对应颜色命格池重抽一枚。点化点来自局内黑白槽累计满槽次数，不消耗当前黑白槽。",
     bodyHtml: `
       <div class="reincarnation-summary dao-pointify-summary">
         <div class="summary-card">
@@ -1676,7 +1198,7 @@ function openDaoPointifyModal(continuation = null) {
           <div class="summary-value">${state.blackInfusionPoints}</div>
         </div>
       </div>
-      <div class="dao-pointify-note">点化会将所选未装配命格放回命格池，并按对应颜色倾向随机重抽；点化后保留原等级。当前黑白槽只负责战斗状态，不会在此被消耗。</div>
+      <div class="dao-pointify-note">点化会将所选当前命格放回命格池，再从你选择的白道或黑道命格池重抽一枚；命格本身的黑白归属是固定的，不会被点化改色。点化后保留原等级，并会立刻替换当前槽位生效。当前黑白槽只负责战斗状态，不会在此被消耗。</div>
     `,
     choices,
     className: "reincarnation-modal dao-pointify-modal",
@@ -1692,15 +1214,15 @@ function openDaoPointifyModal(continuation = null) {
 }
 
 function openDaoPointifyTargetModal(color) {
-  const targetEntries = getUnequippedOwnedDestinyEntries();
+  const targetEntries = getEquippedDestinyEntries();
   renderModal({
     title: color === "white" ? "白道点化目标" : "黑道点化目标",
-    body: `选择一枚未装配命格，消耗 1 点${color === "white" ? "白" : "黑"}点化点后按对应颜色进行重抽。`,
+    body: `选择一枚当前命格，消耗 1 点${color === "white" ? "白" : "黑"}点化点后，会将它放回池中，并从对应颜色命格池重抽一枚。`,
     bodyHtml: `
       <div class="reincarnation-summary dao-pointify-summary">
         <div class="summary-card">
-          <div class="summary-label">重抽倾向</div>
-          <div class="summary-value">${color === "white" ? "偏白" : "偏黑"}</div>
+          <div class="summary-label">重抽池子</div>
+          <div class="summary-value">${color === "white" ? "白道命格池" : "黑道命格池"}</div>
         </div>
         <div class="summary-card">
           <div class="summary-label">剩余点化点</div>
@@ -1711,11 +1233,11 @@ function openDaoPointifyTargetModal(color) {
           <div class="summary-value">是</div>
         </div>
       </div>
-      <div class="dao-pointify-note">当前目标是你点击的那枚未装配命格。点化后会保留该命格的等级，再替换成新的命格结果。</div>
+      <div class="dao-pointify-note">当前目标是你点击的那枚已镶嵌命格。它会先回到公共池中，然后从所选颜色池重抽一枚；命格颜色由命格池决定，不会被强制改写。</div>
     `,
     choices: targetEntries.map((entry) => ({
-      title: `${entry.def.name} [${getAlignmentLabel(entry.def.alignment)}]`,
-      body: `当前目标 | 当前阵营 ${getAlignmentLabel(entry.def.alignment)} | 当前等级 Lv.${entry.level} | 保留等级：是<br>结果预览：${describePointifyPreview(entry.id, color)}`,
+      title: `${entry.def.name} [${getAlignmentLabel(getEntryAlignment(entry))}]`,
+      body: `当前目标 | 当前阵营 ${getAlignmentLabel(getEntryAlignment(entry))} | 当前等级 Lv.${entry.level} | 保留等级：是<br>结果预览：${describePointifyPreview(entry.id, color)}`,
       onClick: () => pointifyDestiny(entry.id, color),
     })),
     className: "reincarnation-modal dao-pointify-modal",
@@ -1726,12 +1248,12 @@ function openDaoPointifyTargetModal(color) {
   });
 }
 
-function openDaoPointifyResultModal({ color, previousId, previousDef, nextId, nextDef, level }) {
-  const canContinuePointify = hasInfusionPoints() && getUnequippedOwnedDestinyEntries().length > 0;
+function openDaoPointifyResultModal({ color, previousId, previousDef, previousAlignment, nextId, nextDef, nextAlignment, level }) {
+  const canContinuePointify = hasInfusionPoints() && getEquippedDestinyEntries().length > 0;
   const resultChanged = previousId !== nextId;
   const resultSummary = resultChanged
-    ? `${previousDef.name} 已重铸为 ${nextDef.name}`
-    : `${previousDef.name} 在本次点化中维持原状`;
+    ? `${previousDef.name} 已从${color === "white" ? "白道" : "黑道"}命格池重抽为 ${nextDef.name}`
+    : `${previousDef.name} 在本次重抽中回到了自己`;
   state.paused = true;
   state.currentModal = "dao-pointify-result";
   renderModal({
@@ -1740,8 +1262,8 @@ function openDaoPointifyResultModal({ color, previousId, previousDef, nextId, ne
     bodyHtml: `
       <div class="reincarnation-summary dao-pointify-summary">
         <div class="summary-card">
-          <div class="summary-label">点化颜色</div>
-          <div class="summary-value">${color === "white" ? "白道" : "黑道"}</div>
+          <div class="summary-label">重抽池子</div>
+          <div class="summary-value">${color === "white" ? "白道命格池" : "黑道命格池"}</div>
         </div>
         <div class="summary-card">
           <div class="summary-label">保留等级</div>
@@ -1760,18 +1282,18 @@ function openDaoPointifyResultModal({ color, previousId, previousDef, nextId, ne
         <div class="summary-card dao-pointify-destiny-card">
           <div class="summary-label">点化前</div>
           <div class="summary-value">${previousDef.name}</div>
-          <div class="dao-pointify-destiny-meta">${getAlignmentLabel(previousDef.alignment)} | Lv.${level}</div>
-          <div class="dao-pointify-destiny-text">${previousDef.text[previousDef.alignment]}</div>
+          <div class="dao-pointify-destiny-meta">${getAlignmentLabel(previousAlignment)} | Lv.${level}</div>
+          <div class="dao-pointify-destiny-text">${getDestinyText(previousDef, previousAlignment)}</div>
         </div>
         <div class="summary-card dao-pointify-destiny-card">
           <div class="summary-label">点化后</div>
           <div class="summary-value">${nextDef.name}</div>
-          <div class="dao-pointify-destiny-meta">${getAlignmentLabel(nextDef.alignment)} | Lv.${level}</div>
-          <div class="dao-pointify-destiny-text">${nextDef.text[nextDef.alignment]}</div>
+          <div class="dao-pointify-destiny-meta">${getAlignmentLabel(nextAlignment)} | Lv.${level}</div>
+          <div class="dao-pointify-destiny-text">${getDestinyText(nextDef, nextAlignment)}</div>
         </div>
       </div>
       <div class="dao-pointify-note">
-        当前战力不会立刻变化，因为点化目标来自未装配命格背包。${getPointifyEquipPreview(nextId)}
+        点化目标来自当前命格槽，结果会立刻生效。${getPointifyBoardPreview(previousId, nextId)}
       </div>
     `,
     choices: canContinuePointify
@@ -1831,10 +1353,20 @@ function buyDestinyOffer(id) {
   const def = destinyCatalog[id];
   if (!def || metaState.points < def.baseCost || metaState.destiny.owned[id]) return;
   metaState.points -= def.baseCost;
-  metaState.destiny.owned[id] = {
-    level: 1,
-  };
-  saveAndRefreshShop(`购入 ${def.name}`);
+  if (metaState.destiny.equipped.length < metaState.destiny.maxSlots) {
+    metaState.destiny.owned[id] = {
+      level: 1,
+      alignment: def.alignment,
+    };
+    metaState.destiny.equipped.push(id);
+    saveAndRefreshShop(`购入 ${def.name}`);
+    return;
+  }
+  openEquipDestinyModal(id, {
+    title: "命格槽已满",
+    body: `购入 ${def.name} 后，需要替换一枚当前命格。`,
+    onComplete: () => saveAndRefreshShop(`购入 ${def.name}`),
+  });
 }
 
 function upgradeDestiny(id) {
@@ -1895,8 +1427,8 @@ function openRunShopModal(finalStep, message) {
     bodyHtml: `
       <div class="reincarnation-summary">
         <div class="summary-card"><div class="summary-label">轮回点</div><div class="summary-value">${metaState.points}</div></div>
-        <div class="summary-card"><div class="summary-label">已拥有命格</div><div class="summary-value">${getOwnedDestinyEntries().length}</div></div>
-        <div class="summary-card"><div class="summary-label">已装备命格</div><div class="summary-value">${metaState.destiny.equipped.length}</div></div>
+        <div class="summary-card"><div class="summary-label">命格槽</div><div class="summary-value">${metaState.destiny.equipped.length}/${metaState.destiny.maxSlots}</div></div>
+        <div class="summary-card"><div class="summary-label">当前命格</div><div class="summary-value">${getOwnedDestinyEntries().length}</div></div>
         <div class="summary-card"><div class="summary-label">当前轮次</div><div class="summary-value">${state.campaign.runIndex}/${TOTAL_RUNS}</div></div>
       </div>
     `,
@@ -2508,7 +2040,7 @@ function castActiveFlame(skill) {
 }
 
 function tryUseActiveSlot(slotIndex) {
-  if (state.mode !== "playing" || state.paused || state.currentModal) return false;
+  if (isGameplayInputBlocked()) return false;
   const skillId = state.player.skillOrder[slotIndex];
   if (!skillId) return false;
   const skill = state.player.skills[skillId];
@@ -3131,21 +2663,8 @@ function updateStatuses(dt) {
   });
 }
 
-function refreshPhase() {
-  const prefix = `第${state.campaign.runIndex}轮 第${state.campaign.stageIndex}关`;
-  if (state.bossFight) {
-    state.phaseLabel = `第${state.campaign.runIndex}轮 大Boss`;
-    return;
-  }
-  if (state.campaign.miniBossSpawned && !state.campaign.miniBossDefeated) {
-    state.phaseLabel = `${prefix} 小Boss`;
-    return;
-  }
-  state.phaseLabel = `${prefix} 击破 ${state.campaign.stageKills}/${state.campaign.targetKills}`;
-}
-
 function update(dt) {
-  if (!state.running || state.paused) return;
+  if (!isGameplayRunning() || state.paused || state.manualPause) return;
   state.time += dt;
   updatePlayer(dt);
   updateSpawn(dt);
@@ -3477,52 +2996,13 @@ function drawPulses(ctx) {
 }
 
 function renderSkillBar() {
-  const slots = state.player.skillOrder.map((id) => {
-    const skill = state.player.skills[id];
-    const template = skills[id];
-    const slotIndex = state.player.skillOrder.indexOf(id) + 1;
-    const activeLevel = getActiveLevel(skill);
-    const activeText = activeLevel > 0
-      ? (skill.activeTimer > 0 ? `主动 ${slotIndex}键 ${skill.activeTimer.toFixed(1)}s` : `主动 ${slotIndex}键 就绪`)
-      : `主动 ${slotIndex}键 ${ACTIVE_UNLOCK_RANK}阶解锁`;
-    let detail = `Rank ${skill.rank}`;
-    if (id === "guard") detail += ` | 护盾 ${Math.max(0, Math.ceil(skill.shield))}`;
-    else if (id === "sword") detail += ` | ${skill.projectiles} 剑`;
-    else if (id === "thunder") detail += ` | 伤害 ${Math.floor(getThunderDamage(skill))} | 链 ${skill.chain}`;
-    else if (id === "flame") detail += ` | 半径 ${Math.floor(skill.radius)}`;
-    return `<div class="skill-card"><div class="skill-name">${slotIndex}. ${template.name}</div><div class="skill-detail">${detail}<br>${activeText}<br>${template.description}</div></div>`;
+  renderSkillBarImpl({
+    dom,
+    state,
+    skills,
+    getActiveLevel,
+    getThunderDamage,
   });
-  while (slots.length < 3) {
-    slots.push('<div class="skill-card"><div class="skill-name">空术法位</div><div class="skill-detail">升级时可获得新的主动术法。</div></div>');
-  }
-  dom.skillBar.innerHTML = slots.join("");
-}
-
-function updateHud() {
-  dom.healthFill.style.width = `${(state.player.hp / state.player.maxHp) * 100}%`;
-  dom.healthText.textContent = `${Math.max(0, Math.ceil(state.player.hp))} / ${Math.ceil(state.player.maxHp)}`;
-  dom.levelText.textContent = state.player.level;
-  dom.xpFill.style.width = `${(state.player.xp / xpNeeded(state.player.level)) * 100}%`;
-  dom.xpText.textContent = `${Math.floor(state.player.xp)} / ${xpNeeded(state.player.level)}`;
-  dom.timerText.textContent = `R${state.campaign.runIndex}-${state.campaign.stageIndex}`;
-  dom.phaseText.textContent = state.phaseLabel;
-  dom.whiteFill.style.width = `${(state.whitePath.value / state.whitePath.cap) * 100}%`;
-  dom.blackFill.style.width = `${(state.blackPath.value / state.blackPath.cap) * 100}%`;
-  dom.whiteText.textContent = `${Math.floor(state.whitePath.value)} / ${state.whitePath.cap}`;
-  dom.blackText.textContent = `${Math.floor(state.blackPath.value)} / ${state.blackPath.cap}`;
-  dom.whiteStageText.textContent = state.whitePath.full ? "白槽已满" : "白槽推进";
-  dom.blackStageText.textContent = state.blackPath.full ? "黑槽已满" : "黑槽推进";
-  dom.statusList.innerHTML = "";
-  const statusLabels = state.statuses.map((item) => `${item.name} ${item.remaining.toFixed(1)}s`);
-  statusLabels.push(`白命格 ${counts.white}`);
-  statusLabels.push(`黑命格 ${counts.black}`);
-  statusLabels.slice(0, 6).forEach((label) => {
-    const pill = document.createElement("div");
-    pill.className = "status-pill";
-    pill.textContent = label;
-    dom.statusList.appendChild(pill);
-  });
-  renderSkillBar();
 }
 
 function render() {
@@ -3566,149 +3046,46 @@ function fillPath(color, amount) {
 }
 
 function describePathStage(path) {
-  if (path.full) return `已满槽 ${path.color === "white" ? "Q" : "E"} 释放`;
-  if (path.value >= PATH_THRESHOLDS.tier2) return "2/3 已触发";
-  if (path.value >= PATH_THRESHOLDS.tier1) return "1/3 已触发";
-  return `下一节点 ${path.value < PATH_THRESHOLDS.tier1 ? PATH_THRESHOLDS.tier1 : PATH_THRESHOLDS.tier2}`;
+  return describePathStageImpl(path);
 }
 
 function refreshPhase() {
-  const prefix = `第${state.campaign.runIndex}轮 第${state.campaign.stageIndex}关`;
-  if (state.bossFight) {
-    state.phaseLabel = `第${state.campaign.runIndex}轮 大Boss`;
-    return;
-  }
-  if (state.campaign.miniBossSpawned && !state.campaign.miniBossDefeated) {
-    state.phaseLabel = `${prefix} 小Boss`;
-    return;
-  }
-  state.phaseLabel = `${prefix} 击破 ${state.campaign.stageKills}/${state.campaign.targetKills}`;
+  refreshPhaseImpl(state);
 }
 
 function updateHud() {
-  dom.healthFill.style.width = `${(state.player.hp / state.player.maxHp) * 100}%`;
-  dom.healthText.textContent = `${Math.max(0, Math.ceil(state.player.hp))} / ${Math.ceil(state.player.maxHp)}`;
-  dom.levelText.textContent = state.player.level;
-  dom.xpFill.style.width = `${(state.player.xp / xpNeeded(state.player.level)) * 100}%`;
-  dom.xpText.textContent = `${Math.floor(state.player.xp)} / ${xpNeeded(state.player.level)}`;
-  dom.timerText.textContent = `R${state.campaign.runIndex}-${state.campaign.stageIndex}`;
-  dom.phaseText.textContent = state.phaseLabel;
-  dom.whiteFill.style.width = `${(state.whitePath.value / state.whitePath.cap) * 100}%`;
-  dom.blackFill.style.width = `${(state.blackPath.value / state.blackPath.cap) * 100}%`;
-  dom.whiteText.textContent = `${Math.floor(state.whitePath.value)} / ${state.whitePath.cap}`;
-  dom.blackText.textContent = `${Math.floor(state.blackPath.value)} / ${state.blackPath.cap}`;
-  dom.whiteStageText.textContent = describePathStage(state.whitePath);
-  dom.blackStageText.textContent = describePathStage(state.blackPath);
-  dom.statusList.innerHTML = "";
-  const counts = getAlignmentCounts();
-  const statusLabels = state.statuses.map((item) => `${item.name} ${item.remaining.toFixed(1)}s`);
-  if (state.player.barrier > 0) statusLabels.push(`护体 ${Math.ceil(state.player.barrier)}`);
-  if (state.blackMomentumStacks > 0 && state.blackMomentumTimer > 0) {
-    statusLabels.push(`袭势 ${state.blackMomentumStacks}层 ${state.blackMomentumTimer.toFixed(1)}s`);
-  }
-  statusLabels.push(`白点化 ${state.whiteInfusionPoints}`);
-  statusLabels.push(`黑点化 ${state.blackInfusionPoints}`);
-  statusLabels.push(`白命格 ${counts.white}`);
-  statusLabels.push(`黑命格 ${counts.black}`);
-  statusLabels.push(`混元命格 ${counts.mixed}`);
-  statusLabels.slice(0, 6).forEach((label) => {
-    const pill = document.createElement("div");
-    pill.className = "status-pill";
-    pill.textContent = label;
-    dom.statusList.appendChild(pill);
+  updateHudImpl({
+    dom,
+    state,
+    syncPauseButton,
+    xpNeeded,
+    describePathStage,
+    getAlignmentCounts,
+    renderSkillBar,
   });
-  renderSkillBar();
 }
 
 function renderGameToText() {
-  return JSON.stringify({
-    mode: state.mode,
-    phase: state.phaseLabel,
-    run_stage: `run-${state.campaign.runIndex}-stage-${state.campaign.stageIndex}`,
-    total_time: formatTime(Math.max(0, state.time)),
-    coordinate_system: "origin top-left, x right, y down",
-    player: {
-      x: Math.round(state.player.x),
-      y: Math.round(state.player.y),
-      hp: Math.round(state.player.hp),
-      max_hp: Math.round(state.player.maxHp),
-      barrier: Math.round(state.player.barrier),
-      level: state.player.level,
-      skills: state.player.skillOrder.map((id) => ({ id, rank: state.player.skills[id].rank })),
-    },
-    paths: {
-      white: { value: Math.round(state.whitePath.value), cap: state.whitePath.cap, full: state.whitePath.full, stage: describePathStage(state.whitePath) },
-      black: { value: Math.round(state.blackPath.value), cap: state.blackPath.cap, full: state.blackPath.full, stage: describePathStage(state.blackPath) },
-    },
-    infusion_points: {
-      white: state.whiteInfusionPoints,
-      black: state.blackInfusionPoints,
-    },
-    destinies: {
-      owned: getOwnedDestinyEntries().map((entry) => ({ id: entry.id, level: entry.level, alignment: entry.def.alignment })),
-      equipped: metaState.destiny.equipped,
-    },
-    enemy_count: state.enemies.length,
-    statuses: state.statuses.map((status) => ({ name: status.name, remaining: Number(status.remaining.toFixed(1)) })),
-    visible_enemies: state.enemies.slice(0, 8).map((enemy) => ({
-      type: enemy.type,
-      x: Math.round(enemy.x),
-      y: Math.round(enemy.y),
-      hp: Math.round(enemy.hp),
-      color: enemy.color,
-    })),
-    boss: state.boss ? { hp: Math.round(state.boss.hp), phase: state.boss.phase } : null,
-    pending_levelups: state.pendingLevelUps,
-    current_modal: state.currentModal,
-    meta: {
-      points: metaState.points,
-      upgrades: metaState.upgrades,
-      runs: metaState.runs,
-      last_result: metaState.lastResult,
-    },
+  return renderGameToTextImpl({
+    state,
+    metaState,
+    getOwnedDestinyEntries,
+    getEntryAlignment,
   });
 }
 
-window.render_game_to_text = renderGameToText;
-window.__debug_setup_mini_boss_reward_flow = (color = "white") => {
-  metaState.destiny.owned = {
-    vital: { level: 2 },
-    blade: { level: 1 },
-    river: { level: 1 },
-  };
-  metaState.destiny.equipped = ["vital", "blade"];
-  saveMetaState();
-  resetGame();
-  closeModal();
-  state.paused = false;
-  state.currentModal = null;
-  state.pendingLevelUps = 0;
-  state.campaign.stageIndex = 1;
-  state.campaign.stageType = "small";
-  state.campaign.miniBossSpawned = true;
-  state.campaign.miniBossDefeated = true;
-  state.pendingMiniBossReward = true;
-  state.enemies = [];
-  state.enemyProjectiles = [];
-  state.drops = [
-    { x: state.player.x + 80, y: state.player.y, kind: "xp", value: 4, color: COLORS.xp, radius: 6, autoCollect: false },
-    { x: state.player.x - 70, y: state.player.y + 20, kind: "path", value: 8, color, radius: 7, autoCollect: false },
-  ];
-  state.whitePath.value = color === "white" ? state.whitePath.cap : 0;
-  state.whitePath.full = color === "white";
-  state.blackPath.value = color === "black" ? state.blackPath.cap : 0;
-  state.blackPath.full = color === "black";
-  state.whiteInfusionPoints = color === "white" ? 1 : 0;
-  state.blackInfusionPoints = color === "black" ? 1 : 0;
-  render();
-  return renderGameToText();
-};
-window.advanceTime = (ms) => {
-  const step = 1000 / 60;
-  const count = Math.max(1, Math.round(ms / step));
-  for (let i = 0; i < count; i += 1) update(step / 1000);
-  render();
-};
+installDebugHooks({
+  state,
+  metaState,
+  saveMetaState,
+  resetGame,
+  closeModal,
+  render,
+  update,
+  COLORS,
+  destinyCatalog,
+  renderGameToText,
+});
 
 function gameLoop(ts) {
   if (!state.realLast) state.realLast = ts;
@@ -3720,7 +3097,9 @@ function gameLoop(ts) {
 }
 
 dom.startBtn.addEventListener("click", resetGame);
+dom.pauseBtn.addEventListener("click", toggleManualPause);
 
+syncPauseButton();
 showOverlay(true);
 render();
 requestAnimationFrame(gameLoop);

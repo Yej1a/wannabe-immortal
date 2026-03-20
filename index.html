@@ -13,7 +13,10 @@
         <div class="brand">Wannabe Immortal</div>
         <div class="subtitle">10-minute cultivation roguelite prototype</div>
       </div>
-      <button id="start-btn" class="start-btn" type="button">开始试炼</button>
+      <div class="topbar-actions">
+        <button id="pause-btn" class="action-btn pause-btn" type="button" disabled>Pause</button>
+        <button id="start-btn" class="start-btn" type="button">开始试炼</button>
+      </div>
     </header>
     <main class="game-layout">
       <section class="hud left-panel">
@@ -64,7 +67,12 @@
 
   <div id="modal-root" class="modal-root hidden"></div>
 
-  <script src="./balance.js?v=20260320-1"></script>
-  <script src="./app.js?v=20260320-1"></script>
+  <script src="./balance.js?v=20260320-2"></script>
+  <script src="./modules/game-data.js?v=20260320-2"></script>
+  <script src="./modules/runtime-state.js?v=20260320-2"></script>
+  <script src="./modules/destiny-helpers.js?v=20260320-2"></script>
+  <script src="./modules/game-ui.js?v=20260320-3"></script>
+  <script src="./modules/debug-tools.js?v=20260320-3"></script>
+  <script src="./app.js?v=20260320-3"></script>
 </body>
 </html>
