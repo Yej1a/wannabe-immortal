@@ -596,6 +596,15 @@ function describePointifyPreview(targetId, color) {
     .join(" | ");
 }
 
+function getPointifyEquipPreview(nextId) {
+  if (metaState.destiny.equipped.length >= metaState.destiny.maxSlots) {
+    return "当前命盘已满，可在“更换命格”中查看替换后的属性变化。";
+  }
+  const before = createDestinyPreviewSnapshot(metaState.destiny.equipped);
+  const after = createDestinyPreviewSnapshot([...metaState.destiny.equipped, nextId]);
+  return `若稍后装配：${describeDestinyStatDelta(before, after).replace("预览：", "")}`;
+}
+
 function makePathState(color) {
   return {
     color,
@@ -1590,11 +1599,14 @@ function pointifyDestiny(targetId, color) {
   if (!entry) return;
   if (color === "white" && state.whiteInfusionPoints <= 0) return;
   if (color === "black" && state.blackInfusionPoints <= 0) return;
+  const previousDef = destinyCatalog[targetId];
+  if (!previousDef) return;
   const poolIds = Object.keys(destinyCatalog).filter((id) => id === targetId || !metaState.destiny.owned[id]);
   const availableAlignments = [...new Set(poolIds.map((id) => destinyCatalog[id].alignment))];
   const nextAlignment = rollDaoPointifyAlignment(color, availableAlignments);
   const candidateIds = poolIds.filter((id) => destinyCatalog[id].alignment === nextAlignment);
   const nextId = candidateIds[Math.floor(Math.random() * candidateIds.length)] || targetId;
+  const nextDef = destinyCatalog[nextId];
   delete metaState.destiny.owned[targetId];
   metaState.destiny.owned[nextId] = { level: entry.level || 1 };
   if (color === "white") {
@@ -1603,10 +1615,14 @@ function pointifyDestiny(targetId, color) {
     state.blackInfusionPoints -= 1;
   }
   saveMetaState();
-  closeModal();
-  state.paused = false;
-  setToast(`道途点化：${destinyCatalog[targetId].name} -> ${destinyCatalog[nextId].name}（${color === "white" ? "白" : "黑"}点化点 -1）`);
-  continueInfusionFlow();
+  openDaoPointifyResultModal({
+    color,
+    previousId: targetId,
+    previousDef,
+    nextId,
+    nextDef,
+    level: entry.level || 1,
+  });
 }
 
 function openDaoPointifyModal(continuation = null) {
@@ -1706,6 +1722,73 @@ function openDaoPointifyTargetModal(color) {
     actions: [{
       label: "返回上一步",
       onClick: () => openDaoPointifyModal(),
+    }],
+  });
+}
+
+function openDaoPointifyResultModal({ color, previousId, previousDef, nextId, nextDef, level }) {
+  const canContinuePointify = hasInfusionPoints() && getUnequippedOwnedDestinyEntries().length > 0;
+  const resultChanged = previousId !== nextId;
+  const resultSummary = resultChanged
+    ? `${previousDef.name} 已重铸为 ${nextDef.name}`
+    : `${previousDef.name} 在本次点化中维持原状`;
+  state.paused = true;
+  state.currentModal = "dao-pointify-result";
+  renderModal({
+    title: "点化结果",
+    body: `${color === "white" ? "白道" : "黑道"}点化完成，${resultSummary}。`,
+    bodyHtml: `
+      <div class="reincarnation-summary dao-pointify-summary">
+        <div class="summary-card">
+          <div class="summary-label">点化颜色</div>
+          <div class="summary-value">${color === "white" ? "白道" : "黑道"}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">保留等级</div>
+          <div class="summary-value">Lv.${level}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">白点化点</div>
+          <div class="summary-value">${state.whiteInfusionPoints}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">黑点化点</div>
+          <div class="summary-value">${state.blackInfusionPoints}</div>
+        </div>
+      </div>
+      <div class="dao-pointify-result-grid">
+        <div class="summary-card dao-pointify-destiny-card">
+          <div class="summary-label">点化前</div>
+          <div class="summary-value">${previousDef.name}</div>
+          <div class="dao-pointify-destiny-meta">${getAlignmentLabel(previousDef.alignment)} | Lv.${level}</div>
+          <div class="dao-pointify-destiny-text">${previousDef.text[previousDef.alignment]}</div>
+        </div>
+        <div class="summary-card dao-pointify-destiny-card">
+          <div class="summary-label">点化后</div>
+          <div class="summary-value">${nextDef.name}</div>
+          <div class="dao-pointify-destiny-meta">${getAlignmentLabel(nextDef.alignment)} | Lv.${level}</div>
+          <div class="dao-pointify-destiny-text">${nextDef.text[nextDef.alignment]}</div>
+        </div>
+      </div>
+      <div class="dao-pointify-note">
+        当前战力不会立刻变化，因为点化目标来自未装配命格背包。${getPointifyEquipPreview(nextId)}
+      </div>
+    `,
+    choices: canContinuePointify
+      ? [{
+        title: "继续点化",
+        body: "还有剩余点化点或可点化命格，继续处理下一枚未装配命格。",
+        onClick: () => openDaoPointifyModal(),
+      }]
+      : [],
+    className: "reincarnation-modal dao-pointify-modal dao-pointify-result-modal",
+    actions: [{
+      label: "确认结果",
+      onClick: () => {
+        closeModal();
+        state.paused = false;
+        continueInfusionFlow();
+      },
     }],
   });
 }

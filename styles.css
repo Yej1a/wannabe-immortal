@@ -379,6 +379,34 @@ canvas {
   line-height: 1.6;
 }
 
+.dao-pointify-result-modal {
+  width: min(1040px, 100%);
+}
+
+.dao-pointify-result-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.dao-pointify-destiny-card .summary-value {
+  font-size: 28px;
+  line-height: 1.25;
+}
+
+.dao-pointify-destiny-meta {
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.dao-pointify-destiny-text {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
 .ending-modal {
   width: min(820px, 100%);
   text-align: center;
@@ -429,7 +457,8 @@ canvas {
   }
 
   .reincarnation-summary,
-  .reincarnation-modal .choice-list {
+  .reincarnation-modal .choice-list,
+  .dao-pointify-result-grid {
     grid-template-columns: 1fr;
   }
 }

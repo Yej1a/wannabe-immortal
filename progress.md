@@ -321,3 +321,5 @@ ode --check app.js passed
 - 2026-03-20：将黑白槽与点化彻底解耦。黑白槽现在只负责局内战斗状态；每次黑/白槽各自满槽一次，分别累积 1 点 黑/白点化点，点化时只消耗对应点化点，不再消耗当前黑白槽。战前整备页新增 更换命格 与 道途点化 入口：可从命格背包中直接装备命格、在装备位已满时替换已装备命格，也可用累计点化点重铸未装配命格。验证：node --check app.js、node --check balance.js 通过；浏览器定向检查确认整备页可完成命格替换，白点化点会从 2 变 1，黑点化点保持不变，且点化后白槽满槽状态仍然保留。
 
 - 2026-03-20：为战前整备补上两类预览。更换命格时，若有空位会直接预览装备后的属性变化；若需替换已装备命格，则在替换列表中逐项显示替换后的属性差值（生命、回复、伤害、承伤、暴击、经验、黑白槽收益等）。点化时，在目标选择页显示真实候选池与按当前点化颜色计算后的结果分布预览。验证：node --check app.js、node --check balance.js 通过；浏览器截图确认替换命格页能显示属性变化预览，白道点化目标页能显示结果预览与候选命格。
+ 
+- 2026-03-20: Added a dedicated post-pointify result modal. After dao pointify, the game now shows before/after destiny cards, preserved level, remaining infusion points, and a preview of what equipping the new destiny would change. Verified with node --check app.js, node --check balance.js, the Playwright smoke run, and a targeted browser check covering mini-boss reward > dao pointify > pointify result > next destiny offer. Screenshot saved at output/pointify-result-check/pointify-result.png.
