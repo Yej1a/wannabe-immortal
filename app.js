@@ -4,6 +4,8 @@ const BALANCE = window.GAME_BALANCE;
 const GAME_DURATION = BALANCE.progression.duration;
 const FIRST_PATH_CAP = BALANCE.progression.firstPathCap;
 const META = BALANCE.reincarnationTable;
+const PATH_COMBAT = BALANCE.pathCombat;
+const PATH_THRESHOLDS = PATH_COMBAT.thresholds;
 
 const COLORS = {
   bg: "#091019",
@@ -48,6 +50,14 @@ window.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
   keys[key] = true;
   if (handleModalHotkeys(key)) {
+    event.preventDefault();
+    return;
+  }
+  if (key === "q" && tryReleasePath("white")) {
+    event.preventDefault();
+    return;
+  }
+  if (key === "e" && tryReleasePath("black")) {
     event.preventDefault();
     return;
   }
@@ -344,6 +354,8 @@ function getAlignmentResult() {
 function getDestinyWeight(alignment) {
   let weight = alignment === "mixed" ? 0.9 : 1;
   const counts = getAlignmentCounts();
+  if (alignment === "white" && state?.whitePath?.full) weight *= 1.1;
+  if (alignment === "black" && state?.blackPath?.full) weight *= 1.1;
   if (alignment === "white" && counts.white >= 2) weight *= 1.25;
   if (alignment === "black" && counts.black >= 2) weight *= 1.25;
   if (alignment === "white" && counts.white >= 4) weight *= 1.6;
@@ -494,8 +506,10 @@ function makePathState(color) {
   return {
     color,
     value: 0,
-    cap: FIRST_PATH_CAP,
+    cap: PATH_COMBAT.cap || FIRST_PATH_CAP,
     full: false,
+    tier1Triggered: false,
+    tier2Triggered: false,
   };
 }
 
@@ -524,6 +538,7 @@ function createState() {
     globalCooldown: 1,
     pickupRange: baseStats.pickupRange * pickupMult,
     regen: baseStats.regen,
+    barrier: 0,
     invulnTimer: 0,
     skills: {},
     skillOrder: [],
@@ -567,6 +582,13 @@ function createState() {
     currentDestinyOffers: [],
     lastRunPoints: 0,
     pendingMiniBossReward: false,
+    noHitTimer: 0,
+    whiteUntouchedRewardTimer: 0,
+    whiteKillHealCooldown: 0,
+    blackLowHpKillCooldown: 0,
+    blackMomentumStacks: 0,
+    blackMomentumTimer: 0,
+    blackMomentumCooldown: 0,
   };
 }
 
@@ -703,7 +725,143 @@ function grantMainSkillUpgrade() {
 }
 
 function addStatus(name, duration, effects) {
-  state.statuses.push({ name, duration, remaining: duration, effects });
+  const existing = state.statuses.find((status) => status.name === name);
+  if (existing) {
+    existing.duration = duration;
+    existing.remaining = duration;
+    existing.effects = effects;
+    return existing;
+  }
+  const next = { name, duration, remaining: duration, effects };
+  state.statuses.push(next);
+  return next;
+}
+
+function hasStatus(name) {
+  return state.statuses.some((status) => status.name === name);
+}
+
+function getStatus(name) {
+  return state.statuses.find((status) => status.name === name) || null;
+}
+
+function getMoveMult() {
+  let mult = 1;
+  state.statuses.forEach((status) => {
+    if (status.effects.moveMult) mult *= status.effects.moveMult;
+  });
+  return mult;
+}
+
+function getPickupRange() {
+  let bonus = 0;
+  state.statuses.forEach((status) => {
+    if (status.effects.pickupBonus) bonus += status.effects.pickupBonus;
+  });
+  return state.player.pickupRange + bonus;
+}
+
+function getCritChance() {
+  let bonus = 0;
+  state.statuses.forEach((status) => {
+    if (status.effects.critChanceBonus) bonus += status.effects.critChanceBonus;
+  });
+  return state.player.critChance + bonus;
+}
+
+function getActiveCooldownRate() {
+  let mult = 1;
+  state.statuses.forEach((status) => {
+    if (status.effects.activeCooldownRate) mult *= status.effects.activeCooldownRate;
+  });
+  return mult;
+}
+
+function getKillHealProfile() {
+  let healPct = 0;
+  let cooldown = 0;
+  state.statuses.forEach((status) => {
+    if (status.effects.onKillHealPct) {
+      healPct += status.effects.onKillHealPct;
+      cooldown = Math.max(cooldown, status.effects.onKillHealCooldown || 0);
+    }
+  });
+  return { healPct, cooldown };
+}
+
+function getDropAttractProfile(drop) {
+  let radius = 0;
+  let speed = 0;
+  let speedMult = 1;
+  const eliteReward = drop.isEliteReward || drop.isMiniBossReward;
+  state.statuses.forEach((status) => {
+    const effects = status.effects;
+    if (effects.attractRadius && effects.attractSpeed) {
+      radius = Math.max(radius, effects.attractRadius);
+      speed = Math.max(speed, effects.attractSpeed);
+    }
+    if (eliteReward && effects.eliteAttractSpeedMult && (!effects.requireBarrier || state.player.barrier > 0)) {
+      radius = Math.max(radius, PATH_COMBAT.white.fullAttractRadius);
+      speed = Math.max(speed, PATH_COMBAT.white.fullAttractSpeed / effects.eliteAttractSpeedMult);
+      speedMult = Math.max(speedMult, effects.eliteAttractSpeedMult);
+    }
+  });
+  return { radius, speed: speed * speedMult };
+}
+
+function getExecuteDamageMult(target) {
+  let mult = 1;
+  state.statuses.forEach((status) => {
+    const effects = status.effects;
+    if (!effects.execute) return;
+    const hpRatio = target.hp / Math.max(1, target.maxHp);
+    if (target.type === "boss") {
+      if (hpRatio <= effects.execute.bossThreshold) mult = Math.max(mult, effects.execute.bossMult);
+      return;
+    }
+    if (target.isMiniBoss || target.type === "elite") {
+      if (hpRatio <= effects.execute.eliteThreshold) mult = Math.max(mult, effects.execute.eliteMult);
+      return;
+    }
+    if (hpRatio <= effects.execute.normalThreshold) mult = Math.max(mult, effects.execute.normalMult);
+  });
+  return mult;
+}
+
+function getBlackBurstProfile() {
+  let radius = 0;
+  let base = 0;
+  let enemyMaxHpPct = 0;
+  let radiusMult = 1;
+  state.statuses.forEach((status) => {
+    const effects = status.effects;
+    if (effects.blackBurstRadius) {
+      radius = Math.max(radius, effects.blackBurstRadius);
+      base = Math.max(base, effects.blackBurstBase || 0);
+      enemyMaxHpPct = Math.max(enemyMaxHpPct, effects.blackBurstEnemyMaxHpPct || 0);
+    }
+    if (effects.blackBurstRadiusMult) radiusMult = Math.max(radiusMult, effects.blackBurstRadiusMult);
+  });
+  return { radius: radius * radiusMult, base, enemyMaxHpPct };
+}
+
+function hasGuardFocus() {
+  return hasStatus("灵护") && state.player.barrier > 0;
+}
+
+function grantBarrier(amount) {
+  state.player.barrier = Math.max(0, state.player.barrier + amount);
+}
+
+function getPlayerAttackPower() {
+  const learned = state.player.skillOrder.map((id) => state.player.skills[id]).filter(Boolean);
+  if (!learned.length) return skills.sword.baseDamage;
+  const total = learned.reduce((sum, skill) => {
+    if (skill.damage) return sum + skill.damage;
+    if (skill.maxShield) return sum + skill.maxShield * 0.35;
+    return sum + 24;
+  }, 0);
+  return total / learned.length;
 }
 
 function getDamageMult() {
@@ -711,6 +869,9 @@ function getDamageMult() {
   state.statuses.forEach((status) => {
     if (status.effects.damageMult) mult *= status.effects.damageMult;
   });
+  if (state.blackMomentumStacks > 0 && state.blackMomentumTimer > 0) {
+    mult *= 1 + state.blackMomentumStacks * PATH_COMBAT.black.tier2AssaultStackMult;
+  }
   return mult;
 }
 
@@ -732,8 +893,218 @@ function getIncomingMult() {
 
 function computeDamage(base) {
   let damage = base * getDamageMult();
-  if (Math.random() < state.player.critChance) damage *= state.player.critDamage;
+  if (Math.random() < getCritChance()) damage *= state.player.critDamage;
   return damage;
+}
+
+function resetPathCharge(path) {
+  path.value = 0;
+  path.full = false;
+  path.tier1Triggered = false;
+  path.tier2Triggered = false;
+}
+
+function triggerPathTier(color, tier) {
+  if (color === "white" && tier === 1) {
+    addStatus("清明", PATH_COMBAT.white.tier1Duration, {
+      pickupBonus: PATH_COMBAT.white.tier1PickupBonus,
+      attractRadius: PATH_COMBAT.white.tier1AttractRadius,
+      attractSpeed: PATH_COMBAT.white.tier1AttractSpeed,
+      onKillHealPct: PATH_COMBAT.white.tier1HealPct,
+      onKillHealCooldown: PATH_COMBAT.white.tier1HealCooldown,
+    });
+    setToast("白道 1/3：清明");
+    return;
+  }
+  if (color === "white" && tier === 2) {
+    const barrier = clamp(
+      state.player.maxHp * PATH_COMBAT.white.tier2BarrierPct,
+      PATH_COMBAT.white.tier2BarrierMin,
+      PATH_COMBAT.white.tier2BarrierMax,
+    );
+    grantBarrier(barrier);
+    addStatus("灵护", PATH_COMBAT.white.tier2Duration, {
+      eliteAttractSpeedMult: PATH_COMBAT.white.tier2EliteAttractMult,
+      requireBarrier: true,
+      onExpire: () => {
+        if (state.player.hp / Math.max(1, state.player.maxHp) >= PATH_COMBAT.white.tier2RefundThreshold) {
+          fillPath("white", PATH_COMBAT.white.tier2RefundValue);
+          setToast("灵护善终：返还白道值");
+        }
+      },
+    });
+    setToast("白道 2/3：灵护");
+    return;
+  }
+  if (color === "black" && tier === 1) {
+    addStatus("煞燃", PATH_COMBAT.black.tier1Duration, {
+      damageMult: PATH_COMBAT.black.tier1DamageMult,
+      castMult: PATH_COMBAT.black.tier1CastMult,
+      moveMult: PATH_COMBAT.black.tier1MoveMult,
+      blackBurstRadius: PATH_COMBAT.black.tier1BurstRadius,
+      blackBurstBase: PATH_COMBAT.black.tier1BurstBase,
+      blackBurstEnemyMaxHpPct: PATH_COMBAT.black.tier1BurstEnemyMaxHpPct,
+      drain: PATH_COMBAT.black.tier1Drain,
+    });
+    setToast("黑道 1/3：煞燃");
+    return;
+  }
+  if (color === "black" && tier === 2) {
+    addStatus("魔驰", PATH_COMBAT.black.tier2Duration, {
+      incomingMult: PATH_COMBAT.black.tier2IncomingMult,
+      activeCooldownRate: PATH_COMBAT.black.tier2ActiveCooldownRate,
+      execute: {
+        normalThreshold: PATH_COMBAT.black.tier2NormalExecuteThreshold,
+        normalMult: PATH_COMBAT.black.tier2NormalExecuteMult,
+        eliteThreshold: PATH_COMBAT.black.tier2EliteExecuteThreshold,
+        eliteMult: PATH_COMBAT.black.tier2EliteExecuteMult,
+        bossThreshold: PATH_COMBAT.black.tier2BossExecuteThreshold,
+        bossMult: PATH_COMBAT.black.tier2BossExecuteMult,
+      },
+    });
+    setToast("黑道 2/3：魔驰");
+  }
+}
+
+function maybeTriggerPathThresholds(path, previousValue) {
+  if (!path.tier1Triggered && previousValue < PATH_THRESHOLDS.tier1 && path.value >= PATH_THRESHOLDS.tier1) {
+    path.tier1Triggered = true;
+    triggerPathTier(path.color, 1);
+  }
+  if (!path.tier2Triggered && previousValue < PATH_THRESHOLDS.tier2 && path.value >= PATH_THRESHOLDS.tier2) {
+    path.tier2Triggered = true;
+    triggerPathTier(path.color, 2);
+  }
+  if (!path.full && previousValue < PATH_THRESHOLDS.full && path.value >= PATH_THRESHOLDS.full) {
+    path.full = true;
+    path.value = path.cap;
+    setToast(path.color === "white" ? "白槽已满，可按 Q 释放或关后点化" : "黑槽已满，可按 E 释放或关后点化");
+  }
+}
+
+function emitStabilizePulse(radius) {
+  state.pulses.push({
+    x: state.player.x,
+    y: state.player.y,
+    radius,
+    damage: 0,
+    kind: "guard",
+    time: 0.24,
+    duration: 0.24,
+    hit: new Set(),
+    affectsBoss: true,
+  });
+  state.enemies.forEach((enemy) => {
+    const dx = enemy.x - state.player.x;
+    const dy = enemy.y - state.player.y;
+    const dist = Math.max(1, Math.hypot(dx, dy));
+    if (dist <= radius + enemy.radius) {
+      const push = 28 + Math.max(0, radius - dist) * 0.12;
+      enemy.x = clamp(enemy.x + (dx / dist) * push, 20, WIDTH - 20);
+      enemy.y = clamp(enemy.y + (dy / dist) * push, 20, HEIGHT - 20);
+    }
+  });
+  if (!state.boss) return;
+  const dx = state.boss.x - state.player.x;
+  const dy = state.boss.y - state.player.y;
+  const dist = Math.max(1, Math.hypot(dx, dy));
+  if (dist <= radius + state.boss.radius) {
+    const push = 16 + Math.max(0, radius - dist) * 0.08;
+    state.boss.x = clamp(state.boss.x + (dx / dist) * push, 80, WIDTH - 80);
+    state.boss.y = clamp(state.boss.y + (dy / dist) * push, 60, HEIGHT - 60);
+  }
+}
+
+function tryReleasePath(color) {
+  if (state.mode !== "playing" || state.paused || state.currentModal) return false;
+  const path = color === "white" ? state.whitePath : state.blackPath;
+  if (!path.full) return false;
+  if (color === "white") {
+    emitStabilizePulse(PATH_COMBAT.white.fullPulseRadius);
+    grantBarrier(clamp(
+      state.player.maxHp * PATH_COMBAT.white.fullBarrierPct,
+      PATH_COMBAT.white.fullBarrierMin,
+      PATH_COMBAT.white.fullBarrierMax,
+    ));
+    addStatus("天息", PATH_COMBAT.white.fullDuration, {
+      incomingMult: PATH_COMBAT.white.fullIncomingMult,
+      pickupBonus: PATH_COMBAT.white.fullPickupBonus,
+      attractRadius: PATH_COMBAT.white.fullAttractRadius,
+      attractSpeed: PATH_COMBAT.white.fullAttractSpeed,
+      onKillHealPct: PATH_COMBAT.white.fullHealPct,
+      onKillHealCooldown: PATH_COMBAT.white.fullHealCooldown,
+    });
+    setToast("白道满槽：天息");
+  } else {
+    pulse(
+      state.player.x,
+      state.player.y,
+      PATH_COMBAT.black.fullPulseRadius,
+      computeDamage(PATH_COMBAT.black.fullPulseBase + getPlayerAttackPower() * 1.1),
+      "guard",
+    );
+    addStatus("魔沸", PATH_COMBAT.black.fullDuration, {
+      damageMult: PATH_COMBAT.black.fullDamageMult,
+      critChanceBonus: PATH_COMBAT.black.fullCritChanceBonus,
+      activeCooldownRate: PATH_COMBAT.black.fullActiveCooldownRate,
+      blackBurstRadiusMult: PATH_COMBAT.black.fullBurstRadiusMult,
+      drain: PATH_COMBAT.black.fullDrain,
+    });
+    setToast("黑道满槽：魔沸");
+  }
+  resetPathCharge(path);
+  return true;
+}
+
+function maybeTriggerBlackMomentum(source = "auto") {
+  if (!hasStatus("魔驰")) return;
+  if (state.blackMomentumCooldown > 0) return;
+  if (source === "active") {
+    const nearby = getTargetsWithinRadius(state.player, PATH_COMBAT.gain.activeThreatRange);
+    if (!nearby.length) return;
+  }
+  state.blackMomentumCooldown = PATH_COMBAT.black.tier2AssaultCooldown;
+  state.blackMomentumTimer = PATH_COMBAT.black.tier2AssaultDuration;
+  state.blackMomentumStacks = Math.min(PATH_COMBAT.black.tier2AssaultMaxStacks, state.blackMomentumStacks + 1);
+}
+
+function maybeTriggerKillHeal() {
+  const profile = getKillHealProfile();
+  if (profile.healPct <= 0 || state.whiteKillHealCooldown > 0) return;
+  state.player.hp = Math.min(state.player.maxHp, state.player.hp + state.player.maxHp * profile.healPct);
+  state.whiteKillHealCooldown = profile.cooldown;
+}
+
+function triggerBlackBurst(enemy) {
+  const burst = getBlackBurstProfile();
+  if (burst.radius <= 0) return;
+  pulse(
+    enemy.x,
+    enemy.y,
+    burst.radius,
+    computeDamage(burst.base + enemy.maxHp * burst.enemyMaxHpPct),
+    "burst",
+  );
+}
+
+function updatePathBehavior(dt) {
+  state.noHitTimer += dt;
+  state.whiteKillHealCooldown = Math.max(0, state.whiteKillHealCooldown - dt);
+  state.blackLowHpKillCooldown = Math.max(0, state.blackLowHpKillCooldown - dt);
+  state.blackMomentumCooldown = Math.max(0, state.blackMomentumCooldown - dt);
+  state.blackMomentumTimer = Math.max(0, state.blackMomentumTimer - dt);
+  if (state.blackMomentumTimer <= 0) state.blackMomentumStacks = 0;
+
+  if (!state.whitePath.full && state.noHitTimer >= PATH_COMBAT.gain.whiteUntouchedDelay) {
+    state.whiteUntouchedRewardTimer += dt;
+    if (state.whiteUntouchedRewardTimer >= PATH_COMBAT.gain.whiteUntouchedInterval) {
+      state.whiteUntouchedRewardTimer -= PATH_COMBAT.gain.whiteUntouchedInterval;
+      fillPath("white", PATH_COMBAT.gain.whiteUntouchedValue);
+      setToast("白道感悟：清心未伤");
+    }
+  } else {
+    state.whiteUntouchedRewardTimer = 0;
+  }
 }
 
 function unlockSkill(gameState, id) {
@@ -927,11 +1298,9 @@ function pointifyDestiny(targetId, color) {
   delete metaState.destiny.owned[targetId];
   metaState.destiny.owned[nextId] = { level: entry.level || 1 };
   if (color === "white") {
-    state.whitePath.value = 0;
-    state.whitePath.full = false;
+    resetPathCharge(state.whitePath);
   } else {
-    state.blackPath.value = 0;
-    state.blackPath.full = false;
+    resetPathCharge(state.blackPath);
   }
   saveMetaState();
   closeModal();
@@ -1585,7 +1954,11 @@ function pulse(x, y, radius, damage, kind, affectsBoss = true) {
 }
 
 function dealDamage(target, amount, source = "player") {
-  target.hp -= amount;
+  const finalAmount = amount * getExecuteDamageMult(target);
+  target.hp -= finalAmount;
+  if (source === "player" && distance(state.player, target) <= PATH_COMBAT.gain.meleeRange) {
+    maybeTriggerBlackMomentum("close");
+  }
   if (target.type === "boss" && target.hp <= target.maxHp * enemies.boss.phaseTwoAt && target.phase === 1) {
     target.phase = 2;
     target.attackTimer = 0.8;
@@ -1632,14 +2005,15 @@ function castActiveThunder(skill) {
   const level = getActiveLevel(skill);
   if (level <= 0) return false;
   const radius = Math.min(WIDTH, HEIGHT) * 0.46;
+  const extraDuration = hasGuardFocus() ? 1 : 0;
   state.pulses.push({
     x: state.player.x,
     y: state.player.y,
     radius,
     damage: computeDamage(skill.damage * (1.55 + level * 0.22)),
     kind: "thunderstorm",
-    time: 2,
-    duration: 2,
+    time: 2 + extraDuration,
+    duration: 2 + extraDuration,
     hit: new Set(),
     affectsBoss: true,
     tickTimer: 0.05,
@@ -1653,7 +2027,7 @@ function castActiveThunder(skill) {
 function castActiveSword(skill) {
   const level = getActiveLevel(skill);
   if (level <= 0) return false;
-  const count = 8 + level * 2;
+  const count = 8 + level * 2 + (hasGuardFocus() ? 1 : 0);
   const damage = computeDamage(skill.damage * (1.35 + level * 0.18));
   for (let i = 0; i < count; i += 1) {
     const angle = (Math.PI * 2 * i) / count;
@@ -1682,13 +2056,14 @@ function castActiveGuard(skill) {
   if (level <= 0) return false;
   const radius = 110 + level * 16;
   const damage = computeDamage(48 + skill.maxShield * 0.35 + level * 18);
+  const pushScale = hasGuardFocus() ? 1.35 : 1;
   pulse(state.player.x, state.player.y, radius, damage, "guard");
   state.enemies.forEach((enemy) => {
     const dx = enemy.x - state.player.x;
     const dy = enemy.y - state.player.y;
     const dist = Math.max(1, Math.hypot(dx, dy));
     if (dist <= radius + enemy.radius) {
-      const push = 36 + level * 12;
+      const push = (36 + level * 12) * pushScale;
       enemy.x = clamp(enemy.x + (dx / dist) * push, 20, WIDTH - 20);
       enemy.y = clamp(enemy.y + (dy / dist) * push, 20, HEIGHT - 20);
     }
@@ -1698,7 +2073,7 @@ function castActiveGuard(skill) {
     const dy = state.boss.y - state.player.y;
     const dist = Math.max(1, Math.hypot(dx, dy));
     if (dist <= radius + state.boss.radius) {
-      const push = 18 + level * 5;
+      const push = (18 + level * 5) * pushScale;
       state.boss.x = clamp(state.boss.x + (dx / dist) * push, 80, WIDTH - 80);
       state.boss.y = clamp(state.boss.y + (dy / dist) * push, 60, HEIGHT - 60);
     }
@@ -1711,7 +2086,7 @@ function castActiveFlame(skill) {
   const level = getActiveLevel(skill);
   if (level <= 0) return false;
   const meteorCount = 2 + level;
-  const waveCount = 3;
+  const waveCount = 3 + (hasGuardFocus() ? 1 : 0);
   const waveInterval = 0.7;
   const waveDuration = 0.7;
   const damage = computeDamage(skill.damage * (3 + level * 0.45));
@@ -1755,6 +2130,7 @@ function tryUseActiveSlot(slotIndex) {
   else if (skillId === "guard") fired = castActiveGuard(skill);
   else if (skillId === "flame") fired = castActiveFlame(skill);
   if (!fired) return false;
+  maybeTriggerBlackMomentum("active");
   skill.activeTimer = getActiveCooldown(skillId, getActiveLevel(skill));
   return true;
 }
@@ -1762,7 +2138,9 @@ function tryUseActiveSlot(slotIndex) {
 function updateSkills(dt) {
   const castScale = getCastMult();
   Object.values(state.player.skills).forEach((skill) => {
-    if (typeof skill.activeTimer === "number") skill.activeTimer = Math.max(0, skill.activeTimer - dt);
+    if (typeof skill.activeTimer === "number") {
+      skill.activeTimer = Math.max(0, skill.activeTimer - dt * getActiveCooldownRate());
+    }
   });
   if (state.player.skills.sword) {
     const skill = state.player.skills.sword;
@@ -1813,7 +2191,17 @@ function updateSkills(dt) {
 }
 
 function spawnDrops(enemy) {
-  state.drops.push({ x: enemy.x, y: enemy.y, kind: "xp", value: enemies[enemy.type].xp, color: COLORS.xp, radius: 6 });
+  const eliteReward = enemy.type === "elite";
+  state.drops.push({
+    x: enemy.x,
+    y: enemy.y,
+    kind: "xp",
+    value: enemies[enemy.type].xp,
+    color: COLORS.xp,
+    radius: 6,
+    isEliteReward: eliteReward,
+    isMiniBossReward: !!enemy.isMiniBoss,
+  });
   const orbColor = enemy.color === "black" ? "white" : "black";
   state.drops.push({
     x: enemy.x + (Math.random() * 10 - 5),
@@ -1822,6 +2210,8 @@ function spawnDrops(enemy) {
     value: enemies[enemy.type].orb,
     color: orbColor,
     radius: 7,
+    isEliteReward: eliteReward,
+    isMiniBossReward: !!enemy.isMiniBoss,
   });
 }
 
@@ -1846,6 +2236,24 @@ function killEnemy(enemy, source) {
   state.totalKills += 1;
   if (!enemy.isMiniBoss) state.campaign.stageKills += 1;
   if (state.player.skills.flame?.burst && enemy.burn > 0) pulse(enemy.x, enemy.y, 44, state.player.skills.flame.damage * 2.2, "burst");
+  maybeTriggerKillHeal();
+  triggerBlackBurst(enemy);
+  const eliteLike = enemy.type === "elite" || enemy.isMiniBoss;
+  if (eliteLike && state.player.hp / Math.max(1, state.player.maxHp) > 0.75) {
+    fillPath("white", PATH_COMBAT.gain.whiteEliteHighHpValue);
+    setToast("白道进益：高气血斩精英");
+  }
+  if (
+    state.player.hp / Math.max(1, state.player.maxHp) < PATH_COMBAT.gain.blackLowHpKillThreshold
+    && state.blackLowHpKillCooldown <= 0
+  ) {
+    fillPath("black", PATH_COMBAT.gain.blackLowHpKillValue);
+    state.blackLowHpKillCooldown = PATH_COMBAT.gain.blackLowHpKillCooldown;
+  }
+  if (eliteLike && distance(state.player, enemy) <= PATH_COMBAT.gain.meleeRange) {
+    fillPath("black", PATH_COMBAT.gain.blackEliteMeleeValue);
+    setToast("黑道进益：近身斩精英");
+  }
   if (enemy.isMiniBoss) {
     triggerMiniBossRewardVacuum();
   }
@@ -1854,6 +2262,17 @@ function killEnemy(enemy, source) {
 function hitPlayer(amount) {
   if (state.player.invulnTimer > 0 || state.mode !== "playing") return;
   let incoming = amount * getIncomingMult();
+  state.noHitTimer = 0;
+  state.whiteUntouchedRewardTimer = 0;
+  if (state.player.barrier > 0) {
+    state.player.barrier -= incoming;
+    if (state.player.barrier >= 0) {
+      state.player.invulnTimer = baseStats.invuln;
+      return;
+    }
+    incoming = Math.abs(state.player.barrier);
+    state.player.barrier = 0;
+  }
   const guard = state.player.skills.guard;
   if (guard && guard.shield > 0) {
     guard.shield -= incoming;
@@ -2044,8 +2463,9 @@ function updatePlayer(dt) {
   const moveX = ((keys.d || keys.arrowright) ? 1 : 0) - ((keys.a || keys.arrowleft) ? 1 : 0);
   const moveY = ((keys.s || keys.arrowdown) ? 1 : 0) - ((keys.w || keys.arrowup) ? 1 : 0);
   const len = Math.hypot(moveX, moveY) || 1;
-  state.player.x = clamp(state.player.x + (moveX / len) * state.player.speed * dt, 20, WIDTH - 20);
-  state.player.y = clamp(state.player.y + (moveY / len) * state.player.speed * dt, 20, HEIGHT - 20);
+  const moveSpeed = state.player.speed * getMoveMult();
+  state.player.x = clamp(state.player.x + (moveX / len) * moveSpeed * dt, 20, WIDTH - 20);
+  state.player.y = clamp(state.player.y + (moveY / len) * moveSpeed * dt, 20, HEIGHT - 20);
   state.player.hp = Math.min(state.player.maxHp, state.player.hp + state.player.regen * dt);
   state.player.invulnTimer = Math.max(0, state.player.invulnTimer - dt);
 }
@@ -2287,8 +2707,12 @@ function updateDrops(dt) {
   }
   state.drops = state.drops.filter((drop) => {
     const dist = distance(drop, state.player);
-    if (drop.autoCollect || dist < state.player.pickupRange) {
-      const speed = (drop.autoCollect ? 960 : 320) * dt;
+    const pickupRange = getPickupRange();
+    const attract = getDropAttractProfile(drop);
+    const inAttractRange = attract.radius > 0 && dist < attract.radius;
+    if (drop.autoCollect || inAttractRange || dist < pickupRange) {
+      const baseSpeed = drop.autoCollect ? 960 : inAttractRange ? Math.max(320, attract.speed) : 320;
+      const speed = baseSpeed * dt;
       drop.x += ((state.player.x - drop.x) / Math.max(1, dist)) * speed;
       drop.y += ((state.player.y - drop.y) / Math.max(1, dist)) * speed;
     }
@@ -2312,7 +2736,9 @@ function updateStatuses(dt) {
       state.player.hp -= state.player.maxHp * status.effects.drain * dt;
       if (state.player.hp <= 0) finishGame(RESULT_DEATH);
     }
-    return status.remaining > 0;
+    if (status.remaining > 0) return true;
+    if (typeof status.effects.onExpire === "function") status.effects.onExpire();
+    return false;
   });
 }
 
@@ -2341,6 +2767,7 @@ function update(dt) {
   updatePulses(dt);
   updateDrops(dt);
   updateStatuses(dt);
+  updatePathBehavior(dt);
   refreshPhase();
   render();
 }
@@ -2744,11 +3171,16 @@ function fillPath(color, amount) {
   const path = color === "white" ? state.whitePath : state.blackPath;
   const gainMult = color === "white" ? state.whiteGainMult : state.blackGainMult;
   if (path.full) return;
+  const previousValue = path.value;
   path.value = Math.min(path.cap, path.value + amount * gainMult);
-  if (path.value >= path.cap) {
-    path.full = true;
-    setToast(color === "white" ? "白槽已满，可进行道途点化" : "黑槽已满，可进行道途点化");
-  }
+  maybeTriggerPathThresholds(path, previousValue);
+}
+
+function describePathStage(path) {
+  if (path.full) return `已满槽 ${path.color === "white" ? "Q" : "E"} 释放`;
+  if (path.value >= PATH_THRESHOLDS.tier2) return "2/3 已触发";
+  if (path.value >= PATH_THRESHOLDS.tier1) return "1/3 已触发";
+  return `下一节点 ${path.value < PATH_THRESHOLDS.tier1 ? PATH_THRESHOLDS.tier1 : PATH_THRESHOLDS.tier2}`;
 }
 
 function refreshPhase() {
@@ -2776,11 +3208,15 @@ function updateHud() {
   dom.blackFill.style.width = `${(state.blackPath.value / state.blackPath.cap) * 100}%`;
   dom.whiteText.textContent = `${Math.floor(state.whitePath.value)} / ${state.whitePath.cap}`;
   dom.blackText.textContent = `${Math.floor(state.blackPath.value)} / ${state.blackPath.cap}`;
-  dom.whiteStageText.textContent = state.whitePath.full ? "白槽已满" : "白槽推进";
-  dom.blackStageText.textContent = state.blackPath.full ? "黑槽已满" : "黑槽推进";
+  dom.whiteStageText.textContent = describePathStage(state.whitePath);
+  dom.blackStageText.textContent = describePathStage(state.blackPath);
   dom.statusList.innerHTML = "";
   const counts = getAlignmentCounts();
   const statusLabels = state.statuses.map((item) => `${item.name} ${item.remaining.toFixed(1)}s`);
+  if (state.player.barrier > 0) statusLabels.push(`护体 ${Math.ceil(state.player.barrier)}`);
+  if (state.blackMomentumStacks > 0 && state.blackMomentumTimer > 0) {
+    statusLabels.push(`袭势 ${state.blackMomentumStacks}层 ${state.blackMomentumTimer.toFixed(1)}s`);
+  }
   statusLabels.push(`白命格 ${counts.white}`);
   statusLabels.push(`黑命格 ${counts.black}`);
   statusLabels.push(`混元命格 ${counts.mixed}`);
@@ -2805,18 +3241,20 @@ function renderGameToText() {
       y: Math.round(state.player.y),
       hp: Math.round(state.player.hp),
       max_hp: Math.round(state.player.maxHp),
+      barrier: Math.round(state.player.barrier),
       level: state.player.level,
       skills: state.player.skillOrder.map((id) => ({ id, rank: state.player.skills[id].rank })),
     },
     paths: {
-      white: { value: Math.round(state.whitePath.value), cap: state.whitePath.cap, full: state.whitePath.full },
-      black: { value: Math.round(state.blackPath.value), cap: state.blackPath.cap, full: state.blackPath.full },
+      white: { value: Math.round(state.whitePath.value), cap: state.whitePath.cap, full: state.whitePath.full, stage: describePathStage(state.whitePath) },
+      black: { value: Math.round(state.blackPath.value), cap: state.blackPath.cap, full: state.blackPath.full, stage: describePathStage(state.blackPath) },
     },
     destinies: {
       owned: getOwnedDestinyEntries().map((entry) => ({ id: entry.id, level: entry.level, alignment: entry.def.alignment })),
       equipped: metaState.destiny.equipped,
     },
     enemy_count: state.enemies.length,
+    statuses: state.statuses.map((status) => ({ name: status.name, remaining: Number(status.remaining.toFixed(1)) })),
     visible_enemies: state.enemies.slice(0, 8).map((enemy) => ({
       type: enemy.type,
       x: Math.round(enemy.x),
