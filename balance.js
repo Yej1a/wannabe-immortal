@@ -2,7 +2,7 @@
 // Modify values here, save the file, then refresh the page to test changes.
 window.GAME_BALANCE = {
   playerTable: {
-    maxHp: 1000,
+    maxHp: 200,
     speed: 220,
     critChance: 0.05,
     critDamage: 1.5,
@@ -185,7 +185,7 @@ window.GAME_BALANCE = {
 
     elite: {
       name: "精英护法",
-      hp: 108,
+      hp: 1000,
       damage: 24,
       speed: 76,
       radius: 28,
