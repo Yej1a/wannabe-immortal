@@ -6,6 +6,7 @@
     FIRST_PATH_CAP,
     DESTINY_SLOT_CAP,
     baseStats,
+    destinyCatalog,
   } = global.GameData;
 
   function createCampaignState() {
@@ -31,6 +32,7 @@
       destiny: {
         owned: {},
         equipped: [],
+        unlocked: Object.keys(destinyCatalog),
         maxSlots: DESTINY_SLOT_CAP,
       },
     };

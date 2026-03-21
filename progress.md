@@ -333,3 +333,65 @@ ode --check app.js passed
 - 2026-03-20: Continued modularization by extracting presentation and debug bootstrap code. Added modules/game-ui.js for modal/toast/overlay helpers, pause-button sync, HUD/status rendering, skill-bar rendering, path-stage labeling, and render_game_to_text payload generation; added modules/debug-tools.js to install render_game_to_text, advanceTime, and the mini-boss reward debug hook from a single place. Updated index.html to load the new modules and slimmed app.js further into gameplay orchestration plus thin wrappers. Verified with node --check on app.js, balance.js, and the new modules; reran the develop-web-game Playwright client; and reran the targeted pause plus white pointify to dao-pointify-result smoke. Artifacts saved under output/module-split-check-2. 
 - 2026-03-20: Corrected dao pointify to use fixed-color destiny pools instead of recoloring destiny instances. Pointify now returns the selected unequipped destiny to the pool, draws a replacement only from the chosen white or black pool, preserves level only, and always uses the catalog-defined alignment for display and bonuses. Updated preview/result copy to describe pool redraw behavior. Verified with node --check on app.js and modules/destiny-helpers.js, plus targeted browser checks showing river(mixed) white pointify redraws into a fixed white destiny and black pointify redraws into a fixed black destiny. Artifacts saved under output/pointify-pool-check. 
 - 2026-03-20: Simplified the destiny system to a 3-slot no-backpack model. Destiny slot cap is now 3, save migration keeps only up to 3 current destinies (equipped entries first), stage prep only shows currently slotted destinies, new destiny acquisition and shop purchases replace an existing slot when full instead of creating stash items, and dao pointify now targets currently slotted destinies and applies the redraw result immediately to that slot. Verified with node --check on app.js and modules, plus a targeted browser smoke under output/destiny-slot-check covering no-backpack UI and immediate slot replacement after pointify. 
+
+2026-03-21 destiny reward timing update
+
+- Moved destiny rewards off mini-boss flow: mini-boss drop settlement now only goes into post-boss pointify (if any) and stage prep.
+- Added one starting destiny offer at new-run start, after starter spell choice if present.
+- Big-boss destiny rewards now trigger only after boss clears for runs 1 and 2; run 3 boss clear goes straight to ending flow.
+- Refactored cquireDestiny and destiny-offer modal to accept continuation callbacks so reward flow can route to prep, shop, or ending correctly.
+
+2026-03-21 architecture boundary fix
+
+- Added explicit destiny save separation: owned, equipped, and unlocked now coexist in meta save shape instead of normalizing everything down to equipped slots.
+- Fixed destiny normalization so existing saves keep backpack destinies; equipped selection is filtered and preserved, but owned destinies are no longer truncated to slot count.
+- Reward/shop acquire flow now keeps newly obtained destinies in owned inventory even when slots are full; replace modal only changes equipped slots and no longer deletes the displaced destiny from ownership.
+- Ending result wrapper now normalizes legacy garbled alignment strings so ending UI and settlement use the same canonical result values (成仙 / 化魔 / 成人（Be Human）).
+- Destiny weighting / ending resolution architecture tightened: runtime result no longer depends on battle-path residue as a tiebreak, and missing-destiny queries now respect unlocked instead of assuming all catalog IDs are always buyable/offerable.
+
+2026-03-21 destiny flow rule update
+
+- Destiny rules changed to a no-backpack model: current destiny ownership is now effectively limited to the 3 active slots; normalization drops extra stored destinies and keeps only the equipped set.
+- Start flow now grants 1 destiny offer, each small-boss clear grants 1 destiny offer, and each big-boss clear also grants 1 destiny offer before continuing to next stage / shop / ending.
+- When current destiny count is below 3, newly obtained destinies now open an explicit equip-or-abandon modal instead of auto-equipping.
+- When current destiny count is 3, newly obtained destinies now open a replace-or-abandon modal; abandoning no longer leaves a hidden backpack copy behind.
+- Removed remaining backpack-facing UI text / flow from active reward chain; stage prep now only reflects current equipped destinies plus pointify.
+- Validation: 
+ode --check app.js, 
+ode --check modules/destiny-helpers.js, and Playwright regression covering start reward, small-boss reward, full-slot boss reward, and final-boss reward before ending all passed.
+
+2026-03-21 shop replace confirmation update
+
+- Shop purchase flow now warns before replacing when destiny slots are full.
+- Clicking a shop buy at 3/3 no longer deducts points immediately; it first opens a replacement-confirm modal with stat preview and explicit wording that the purchase will replace a current destiny.
+- Abandoning from that modal now cancels the purchase and returns to the run shop without consuming points.
+- Validation: 
+ode --check app.js plus targeted Playwright shop regression confirmed un-shop -> equip-destiny confirm -> cancel -> run-shop with point total unchanged.
+
+2026-03-21 clear save button
+
+- Added a topbar 清空存档 button that removes the game's browser save key (wannabe-immortal-save) and resets both meta/runtime state back to the initial menu in-place.
+- Clearing save now updates the current session immediately: closes modals, restores start overlay, resets button text to 开始试炼, and shows a toast so the user can restart without closing the browser.
+- Validation: 
+ode --check app.js and a Playwright click-through confirmed the save key is removed, overlay returns, and the start screen is restored.
+
+2026-03-21 pointify irreversibility warning
+
+- Removed the destiny-offer fallback action that exchanged a destiny reward for reincarnation points; reward modals now only resolve by choosing a destiny or exiting through the normal continuation path when no offers exist.
+- Added a dedicated 确认点化 modal before executing pointify. Players now choose a target first, then see an explicit irreversible warning plus target/preview details before the reroll actually happens.
+- Fixed pointify target modal state tracking by setting currentModal = 'dao-pointify-target', so back-navigation and test state now reflect the visible modal correctly.
+- Validation: 
+ode --check app.js and Playwright flow checks confirmed reward offers have no action buttons and pointify now goes dao-pointify -> dao-pointify-target -> dao-pointify-confirm before execution.
+
+2026-03-21 single button centering
+
+- Modal rendering now tags single-choice rows and single-action rows with single-item helper classes.
+- CSS now centers any modal row that contains only one button, with a capped width for the lone choice card so single-option dialogs no longer stick awkwardly to the left.
+- Validation: 
+ode --check modules/game-ui.js and a Playwright screenshot on the single-choice destiny acquire modal confirmed both the lone choice and lone action rows are centered.
+
+2026-03-21 UI follow-up verification
+
+- Verified small-boss destiny offer now includes a direct abandon action button and captured `output/ui-followup-check/small-boss-offer-with-abandon.png`
+- Verified the actual `stage-confirm` modal after the single-item centering CSS update and captured `output/ui-followup-check/actual-next-battle-confirm-centered.png`
+- No new console or page errors were reported during the targeted Playwright check

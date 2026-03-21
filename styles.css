@@ -296,6 +296,10 @@ canvas {
   gap: 12px;
 }
 
+.choice-list.single-item {
+  justify-items: center;
+}
+
 .choice-card {
   width: 100%;
   text-align: left;
@@ -328,6 +332,10 @@ canvas {
   justify-content: flex-end;
   gap: 12px;
   margin-top: 18px;
+}
+
+.modal-actions.single-item {
+  justify-content: center;
 }
 
 .reincarnation-modal {
@@ -373,6 +381,15 @@ canvas {
 
 .reincarnation-modal .choice-list {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.reincarnation-modal .choice-list.single-item {
+  grid-template-columns: 1fr;
+}
+
+.choice-list.single-item .choice-card {
+  max-width: min(460px, 100%);
+  margin-inline: auto;
 }
 
 .reincarnation-modal .choice-card {

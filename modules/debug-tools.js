@@ -19,6 +19,7 @@
         river: { level: 1, alignment: destinyCatalog.river.alignment },
       };
       metaState.destiny.equipped = ["vital", "blade"];
+      metaState.destiny.unlocked = Object.keys(destinyCatalog);
       saveMetaState();
       resetGame();
       closeModal();

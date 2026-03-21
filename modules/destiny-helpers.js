@@ -9,11 +9,24 @@
     destinyCatalog,
   } = global.GameData;
 
+  const ALL_DESTINY_IDS = Object.keys(destinyCatalog);
+
   function ensureMetaCollections(metaState) {
-    if (!metaState.destiny) metaState.destiny = { owned: {}, equipped: [], maxSlots: DESTINY_SLOT_CAP };
+    if (!metaState.destiny) metaState.destiny = {
+      owned: {},
+      equipped: [],
+      unlocked: [...ALL_DESTINY_IDS],
+      maxSlots: DESTINY_SLOT_CAP,
+    };
     if (!metaState.destiny.owned) metaState.destiny.owned = {};
     if (!metaState.destiny.equipped) metaState.destiny.equipped = [];
+    if (!Array.isArray(metaState.destiny.unlocked)) metaState.destiny.unlocked = [...ALL_DESTINY_IDS];
     metaState.destiny.maxSlots = DESTINY_SLOT_CAP;
+    metaState.destiny.unlocked = [...new Set(
+      metaState.destiny.unlocked
+        .filter((id) => !!destinyCatalog[id])
+        .concat(Object.keys(metaState.destiny.owned).filter((id) => !!destinyCatalog[id])),
+    )];
     Object.entries(metaState.destiny.owned).forEach(([id, entry]) => {
       const def = destinyCatalog[id];
       if (!def) return;
@@ -24,18 +37,24 @@
       if (!entry.level) entry.level = 1;
       if (!entry.alignment) entry.alignment = def.alignment;
     });
-    const keptIds = [];
-    metaState.destiny.equipped.forEach((id) => {
-      if (!metaState.destiny.owned[id] || keptIds.includes(id) || keptIds.length >= DESTINY_SLOT_CAP) return;
-      keptIds.push(id);
-    });
-    Object.keys(metaState.destiny.owned).forEach((id) => {
-      if (keptIds.includes(id) || keptIds.length >= DESTINY_SLOT_CAP) return;
-      keptIds.push(id);
-    });
-    metaState.destiny.equipped = keptIds;
     metaState.destiny.owned = Object.fromEntries(
-      keptIds
+      Object.entries(metaState.destiny.owned).filter(([id, entry]) => !!destinyCatalog[id] && !!entry),
+    );
+    const equippedIds = [];
+    metaState.destiny.equipped.forEach((id) => {
+      if (!metaState.destiny.owned[id] || equippedIds.includes(id) || equippedIds.length >= DESTINY_SLOT_CAP) return;
+      equippedIds.push(id);
+    });
+    if (!equippedIds.length) {
+      Object.keys(metaState.destiny.owned).some((id) => {
+        if (equippedIds.length >= DESTINY_SLOT_CAP) return true;
+        equippedIds.push(id);
+        return false;
+      });
+    }
+    metaState.destiny.equipped = equippedIds;
+    metaState.destiny.owned = Object.fromEntries(
+      equippedIds
         .map((id) => [id, metaState.destiny.owned[id]])
         .filter(([, entry]) => !!entry),
     );
@@ -78,6 +97,7 @@
   function getAlignmentResult(state, metaState) {
     const counts = getAlignmentCounts(metaState);
     const hasHumanEnding = getEquippedDestinyEntries(metaState).some((entry) => entry.id === HUMAN_ENDING_DESTINY_ID);
+    if (!hasHumanEnding && counts.white === counts.black) return "鎴愪粰";
     if (hasHumanEnding) return "成人（Be Human）";
     if (counts.white > counts.black) return "成仙";
     if (counts.black > counts.white) return "化魔";
@@ -89,6 +109,11 @@
   function getDestinyWeight(alignment, state, metaState) {
     let weight = alignment === "mixed" ? 0.9 : 1;
     const counts = getAlignmentCounts(metaState);
+    state = {
+      ...state,
+      whitePath: { ...state?.whitePath, full: false },
+      blackPath: { ...state?.blackPath, full: false },
+    };
     if (alignment === "white" && state?.whitePath?.full) weight *= 1.1;
     if (alignment === "black" && state?.blackPath?.full) weight *= 1.1;
     if (alignment === "white" && counts.white >= 2) weight *= 1.25;
@@ -109,7 +134,10 @@
   }
 
   function getMissingDestinyIds(metaState) {
-    return Object.keys(destinyCatalog).filter((id) => !metaState.destiny.owned[id]);
+    const unlockedIds = Array.isArray(metaState?.destiny?.unlocked) && metaState.destiny.unlocked.length
+      ? metaState.destiny.unlocked.filter((id) => !!destinyCatalog[id])
+      : ALL_DESTINY_IDS;
+    return unlockedIds.filter((id) => !metaState.destiny.owned[id]);
   }
 
   function getRandomDestinyOffers(metaState, state, count = 3) {

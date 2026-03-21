@@ -32,12 +32,14 @@
     state.modalOptions = { choices, actions };
     dom.modalRoot.classList.remove("hidden");
     syncPauseButton();
+    const choiceListClass = choices.length === 1 ? "choice-list single-item" : "choice-list";
+    const actionListClass = actions.length === 1 ? "modal-actions single-item" : "modal-actions";
     dom.modalRoot.innerHTML = `
       <div class="modal-card ${className}">
         <div class="modal-title">${title}</div>
         <div class="modal-body">${body}</div>
         ${bodyHtml}
-        <div class="choice-list">
+        <div class="${choiceListClass}">
           ${choices.map((choice, index) => `
             <button class="choice-card" type="button" data-choice="${index}" ${choice.disabled ? "disabled" : ""}>
               <strong>${choice.title}</strong>
@@ -45,7 +47,7 @@
             </button>
           `).join("")}
         </div>
-        <div class="modal-actions">
+        <div class="${actionListClass}">
           ${actions.map((action, index) => `<button class="action-btn" type="button" data-action="${index}">${action.label}</button>`).join("")}
         </div>
       </div>
