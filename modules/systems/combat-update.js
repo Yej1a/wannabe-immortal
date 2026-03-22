@@ -26,6 +26,7 @@
       markTargetHitFx,
       addXp,
       fillPath,
+      maybeOpenPendingLevelUp,
       maybeHandlePostBossInfusion,
       openDestinyOffer,
       advanceCampaign,
@@ -513,6 +514,11 @@
         return true;
       });
       if (state.pendingMiniBossReward && state.drops.length === 0) {
+        if (state.currentModal) return;
+        if (state.pendingLevelUps > 0) {
+          maybeOpenPendingLevelUp();
+          return;
+        }
         state.pendingMiniBossReward = false;
         maybeHandlePostBossInfusion(() => openDestinyOffer({
           title: "道途进了一步",

@@ -1621,7 +1621,6 @@ function openLevelUp() {
 function maybeOpenPendingLevelUp() {
   if (state.pendingLevelUps <= 0) return;
   if (state.currentModal) return;
-  if (state.pendingMiniBossReward) return;
   if (state.mode !== "playing") return;
   openLevelUp();
 }
@@ -2667,6 +2666,7 @@ combatSystems = createCombatSystems({
   markTargetHitFx,
   addXp,
   fillPath,
+  maybeOpenPendingLevelUp,
   maybeHandlePostBossInfusion,
   openDestinyOffer,
   advanceCampaign,

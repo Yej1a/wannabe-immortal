@@ -734,3 +734,29 @@ node --check modules/game-ui.js passed
 
 - Note:
   - `GAME_DESIGN_DOC.md` still contains an older "at least 2 basic-layer entries" table elsewhere; implementation now follows the repeated `4` base upgrades / `5`th investment wording used in the more explicit sections.
+
+2026-03-22 mini-boss level-up priority
+
+- Adjusted the small-boss post-kill modal order so pending skill upgrades are resolved before the follow-up reward flow.
+- Kept the current reward chain intact; only changed the priority:
+  - `maybeOpenPendingLevelUp()` no longer hard-blocks on `pendingMiniBossReward`
+  - the mini-boss reward handoff now checks `pendingLevelUps` first once reward drops are collected
+  - if a level-up is waiting, the level modal opens before `道途点化` / 命格后续界面
+  - after the final level-up is chosen, the existing mini-boss reward flow continues on the next update tick
+
+- Verification:
+  - `node --check app.js`
+  - `node --check modules/systems/combat-update.js`
+  - targeted Playwright order validation passed:
+    - used the mini-boss reward debug flow plus `1` pending level-up
+    - confirmed the first modal after mini-boss reward collection was `level`
+    - confirmed the follow-up modal after choosing the upgrade was `dao-pointify`
+    - reviewed screenshots:
+      - `output/mini-boss-level-priority-check/level-first.png`
+      - `output/mini-boss-level-priority-check/followup-after-level.png`
+    - saved summary in `output/mini-boss-level-priority-check/summary.json`
+    - no console/page errors were captured
+  - develop-web-game smoke passed:
+    - output in `output/web-game/miniboss-level-priority-smoke`
+    - reviewed `output/web-game/miniboss-level-priority-smoke/shot-0.png`
+    - no smoke `errors*.json` file was generated
