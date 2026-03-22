@@ -32,6 +32,7 @@
   const BRANCH_UNLOCK_BASE_UPGRADES = 4;
   const BRANCH_CHOICE_GUARANTEE_COUNT = 2;
   const ACTIVE_UNLOCK_RANK = BRANCH_UNLOCK_BASE_UPGRADES + 2;
+  const UNIFIED_ACTIVE_BASE_COOLDOWN = 5;
   const HUMAN_ENDING_DESTINY_ID = null;
 
   const destinyCatalog = {
@@ -166,7 +167,7 @@
           shortLabel: "剑潮",
           activeName: "万剑归宗",
           activeDescription: "以成群飞剑瞬时爆发压场，负责短时清线与集群收割。",
-          baseCooldown: 3,
+          baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN,
           vfx: {
             palette: {
               primary: "#f7e6a7",
@@ -194,7 +195,7 @@
           shortLabel: "大剑",
           activeName: "巨阙镇场",
           activeDescription: "召出持续切场的巨剑，负责压精英、压 Boss 与切开路径。",
-          baseCooldown: 3.6,
+          baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN,
           vfx: {
             palette: {
               primary: "#f0c97c",
@@ -227,7 +228,7 @@
           shortLabel: "天罚",
           activeName: "掌心雷·天罚",
           activeDescription: "在大范围内持续落雷，负责主动技高潮爆发。",
-          baseCooldown: 3,
+          baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN,
           vfx: {
             palette: {
               primary: "#c9dbff",
@@ -250,7 +251,7 @@
           shortLabel: "连锁",
           activeName: "连锁雷暴",
           activeDescription: "锁定关键目标并高速追链，负责补漏与点杀高威胁。",
-          baseCooldown: 2.8,
+          baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN,
           vfx: {
             palette: {
               primary: "#baf4ff",
@@ -279,7 +280,7 @@
           shortLabel: "爆落",
           activeName: "陨火天坠",
           activeDescription: "多波陨火爆落，负责主动技爆燃清场。",
-          baseCooldown: 3,
+          baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN,
           vfx: {
             palette: {
               primary: "#ffc278",
@@ -300,7 +301,7 @@
           shortLabel: "封区",
           activeName: "留焰封区",
           activeDescription: "在敌群与路径上留下持续留焰区，负责封路与逼位。",
-          baseCooldown: 3.2,
+          baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN,
           vfx: {
             palette: {
               primary: "#ffd48e",
@@ -326,7 +327,7 @@
           shortLabel: "护体",
           activeName: "金钟震荡",
           activeDescription: "以玩家为中心稳场震退，负责开路与护体。",
-          baseCooldown: 3,
+          baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN,
           vfx: {
             palette: {
               primary: "#f0e1b1",
@@ -349,7 +350,7 @@
           shortLabel: "弹反",
           activeName: "返天钟鸣",
           activeDescription: "开启短时反制窗口，把敌人的攻势转化为反打。",
-          baseCooldown: 2.9,
+          baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN,
           vfx: {
             palette: {
               primary: "#dff2ff",
@@ -372,10 +373,10 @@
   };
 
   const activeSkillTable = {
-    sword: { baseCooldown: 3 },
-    thunder: { baseCooldown: 3 },
-    guard: { baseCooldown: 3 },
-    flame: { baseCooldown: 3 },
+    sword: { baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN },
+    thunder: { baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN },
+    guard: { baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN },
+    flame: { baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN },
   };
 
   const enemies = BALANCE.monsterTable;

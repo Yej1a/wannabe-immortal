@@ -756,7 +756,27 @@ node --check modules/game-ui.js passed
       - `output/mini-boss-level-priority-check/followup-after-level.png`
     - saved summary in `output/mini-boss-level-priority-check/summary.json`
     - no console/page errors were captured
-  - develop-web-game smoke passed:
+ - develop-web-game smoke passed:
     - output in `output/web-game/miniboss-level-priority-smoke`
     - reviewed `output/web-game/miniboss-level-priority-smoke/shot-0.png`
+    - no smoke `errors*.json` file was generated
+
+2026-03-23 unified active cooldown to 5s
+
+- Unified the current active-skill base cooldowns to `5s` across all four skills and their routes.
+- Kept the existing active-cooldown system structure intact; only normalized the data source:
+  - all route `baseCooldown` values in `skillRouteTable` now point to the same `5s` constant
+  - `activeSkillTable` fallback values are also `5s`
+- This means current route actives no longer differ by base cooldown; later per-route tuning can still be reintroduced from the same data hook if needed.
+
+- Verification:
+  - `node --check modules/game-data.js`
+  - targeted browser assertion passed:
+    - `sword.swarm`, `sword.greatsword`, `thunder.storm`, `thunder.chain`, `flame.meteor`, `flame.zone`, `guard.bulwark`, `guard.counter` all reported `baseCooldown: 5`
+    - `activeSkillTable` fallback entries for `sword / thunder / flame / guard` all reported `5`
+    - saved summary in `output/active-cooldown-5s-check/summary.json`
+    - no console/page errors were captured
+  - develop-web-game smoke passed:
+    - output in `output/web-game/active-cooldown-5s-smoke`
+    - reviewed `output/web-game/active-cooldown-5s-smoke/shot-0.png`
     - no smoke `errors*.json` file was generated
