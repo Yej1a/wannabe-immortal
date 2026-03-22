@@ -1,8 +1,73 @@
 (function initGameUI(global) {
-  const {
-    ACTIVE_UNLOCK_RANK,
-    PATH_THRESHOLDS,
-  } = global.GameData;
+  const { PATH_THRESHOLDS, skills, skillRouteTable } = global.GameData;
+
+  function getSkillTheme(skillId) {
+    return skills[skillId]?.art || {
+      primary: "#eef5f7",
+      secondary: "#7ca0b8",
+      glow: "rgba(255,255,255,0.12)",
+    };
+  }
+
+  function renderSkillIcon(skillId) {
+    const theme = getSkillTheme(skillId);
+    const style = `style="--skill-primary:${theme.primary};--skill-secondary:${theme.secondary};--skill-glow:${theme.glow};"`;
+    if (skillId === "sword") {
+      return `
+        <div class="skill-icon skill-icon-sword" ${style}>
+          <svg viewBox="0 0 48 48" aria-hidden="true">
+            <circle cx="24" cy="24" r="22" class="skill-icon-bg" />
+            <path d="M31 9l5 5-11 11-4 1 1-4 9-13z" class="skill-icon-main" />
+            <path d="M19 28l6 1-1 6-4 4-3-3 4-4z" class="skill-icon-edge" />
+            <path d="M11 30c6-5 15-7 26-5" class="skill-icon-ring" />
+          </svg>
+        </div>
+      `;
+    }
+    if (skillId === "thunder") {
+      return `
+        <div class="skill-icon skill-icon-thunder" ${style}>
+          <svg viewBox="0 0 48 48" aria-hidden="true">
+            <circle cx="24" cy="24" r="22" class="skill-icon-bg" />
+            <path d="M25 8l-8 15h6l-3 17 11-18h-6l4-14z" class="skill-icon-main" />
+            <path d="M10 33c7-6 16-7 28-3" class="skill-icon-ring" />
+          </svg>
+        </div>
+      `;
+    }
+    if (skillId === "flame") {
+      return `
+        <div class="skill-icon skill-icon-flame" ${style}>
+          <svg viewBox="0 0 48 48" aria-hidden="true">
+            <circle cx="24" cy="24" r="22" class="skill-icon-bg" />
+            <circle cx="24" cy="24" r="11.5" class="skill-icon-ring" />
+            <path d="M24 11c3 4 7 7 7 13 0 5-3 9-7 9s-7-4-7-9c0-5 3-8 7-13z" class="skill-icon-main" />
+            <path d="M24 18c2 3 4 4 4 7a4 4 0 1 1-8 0c0-2 1-4 4-7z" class="skill-icon-edge" />
+          </svg>
+        </div>
+      `;
+    }
+    if (skillId === "guard") {
+      return `
+        <div class="skill-icon skill-icon-guard" ${style}>
+          <svg viewBox="0 0 48 48" aria-hidden="true">
+            <circle cx="24" cy="24" r="22" class="skill-icon-bg" />
+            <path d="M24 10c8 0 12 3 12 3v10c0 8-6 13-12 15-6-2-12-7-12-15V13s4-3 12-3z" class="skill-icon-main" />
+            <path d="M16 21c5 2 11 2 16 0" class="skill-icon-ring" />
+            <path d="M18 29c4 1 8 1 12 0" class="skill-icon-edge" />
+          </svg>
+        </div>
+      `;
+    }
+    return `
+      <div class="skill-icon skill-icon-empty">
+        <svg viewBox="0 0 48 48" aria-hidden="true">
+          <circle cx="24" cy="24" r="18" class="skill-icon-empty-ring" />
+          <path d="M16 24h16" class="skill-icon-empty-line" />
+        </svg>
+      </div>
+    `;
+  }
 
   function formatTime(totalSeconds) {
     const seconds = Math.ceil(totalSeconds);
@@ -78,11 +143,11 @@
   function syncPauseButton(dom, state, canToggleManualPause) {
     const canToggle = canToggleManualPause();
     dom.pauseBtn.disabled = !canToggle && !state.manualPause;
-    dom.pauseBtn.textContent = state.manualPause ? "\u7ee7\u7eed" : "\u6682\u505c";
+    dom.pauseBtn.textContent = state.manualPause ? "继续" : "暂停";
   }
 
   function describePathStage(path) {
-    if (path.full) return `已满槽 ${path.color === "white" ? "Q" : "E"} 释放`;
+    if (path.full) return `已满槽，按 ${path.color === "white" ? "Q" : "E"} 释放`;
     if (path.value >= PATH_THRESHOLDS.tier2) return "2/3 已触发";
     if (path.value >= PATH_THRESHOLDS.tier1) return "1/3 已触发";
     return `下一节点 ${path.value < PATH_THRESHOLDS.tier1 ? PATH_THRESHOLDS.tier1 : PATH_THRESHOLDS.tier2}`;
@@ -101,24 +166,31 @@
     state.phaseLabel = `${prefix} 击破 ${state.campaign.stageKills}/${state.campaign.targetKills}`;
   }
 
-  function renderSkillBar({ dom, state, skills, getActiveLevel, getThunderDamage }) {
-    const slots = state.player.skillOrder.map((id) => {
-      const skill = state.player.skills[id];
-      const template = skills[id];
-      const slotIndex = state.player.skillOrder.indexOf(id) + 1;
-      const activeLevel = getActiveLevel(skill);
-      const activeText = activeLevel > 0
-        ? (skill.activeTimer > 0 ? `主动 ${slotIndex}键 ${skill.activeTimer.toFixed(1)}s` : `主动 ${slotIndex}键 就绪`)
-        : `主动 ${slotIndex}键 ${ACTIVE_UNLOCK_RANK}阶解锁`;
-      let detail = `Rank ${skill.rank}`;
-      if (id === "guard") detail += ` | 护盾 ${Math.max(0, Math.ceil(skill.shield))}`;
-      else if (id === "sword") detail += ` | ${skill.projectiles} 剑`;
-      else if (id === "thunder") detail += ` | 伤害 ${Math.floor(getThunderDamage(skill))} | 链 ${skill.chain}`;
-      else if (id === "flame") detail += ` | 半径 ${Math.floor(skill.radius)}`;
-      return `<div class="skill-card"><div class="skill-name">${slotIndex}. ${template.name}</div><div class="skill-detail">${detail}<br>${activeText}<br>${template.description}</div></div>`;
-    });
+  function renderSkillBar({ dom, skillCards }) {
+    const slots = skillCards.map((card) => `
+      <button
+        class="skill-card inspectable"
+        type="button"
+        data-inspect-group="skill"
+        data-inspect-key="${card.key}"
+      >
+        ${renderSkillIcon(card.key)}
+        <div class="skill-copy">
+          <div class="skill-name">${card.name}</div>
+          <div class="skill-detail">${card.detail}</div>
+        </div>
+      </button>
+    `);
     while (slots.length < 3) {
-      slots.push('<div class="skill-card"><div class="skill-name">空术法位</div><div class="skill-detail">升级时可获得新的主动术法。</div></div>');
+      slots.push(`
+        <div class="skill-card empty">
+          ${renderSkillIcon("empty")}
+          <div class="skill-copy">
+            <div class="skill-name">空术法位</div>
+            <div class="skill-detail">升级时可获得新的主动术法。</div>
+          </div>
+        </div>
+      `);
     }
     dom.skillBar.innerHTML = slots.join("");
   }
@@ -129,8 +201,10 @@
     syncPauseButton,
     xpNeeded,
     describePathStage,
-    getAlignmentCounts,
     renderSkillBar,
+    statusItems,
+    destinyItems,
+    pathHintHtml,
   }) {
     syncPauseButton();
     dom.healthFill.style.width = `${(state.player.hp / state.player.maxHp) * 100}%`;
@@ -138,7 +212,6 @@
     dom.levelText.textContent = state.player.level;
     dom.xpFill.style.width = `${(state.player.xp / xpNeeded(state.player.level)) * 100}%`;
     dom.xpText.textContent = `${Math.floor(state.player.xp)} / ${xpNeeded(state.player.level)}`;
-    dom.timerText.textContent = `R${state.campaign.runIndex}-${state.campaign.stageIndex}`;
     dom.phaseText.textContent = state.phaseLabel;
     dom.whiteFill.style.width = `${(state.whitePath.value / state.whitePath.cap) * 100}%`;
     dom.blackFill.style.width = `${(state.blackPath.value / state.blackPath.cap) * 100}%`;
@@ -146,24 +219,40 @@
     dom.blackText.textContent = `${Math.floor(state.blackPath.value)} / ${state.blackPath.cap}`;
     dom.whiteStageText.textContent = describePathStage(state.whitePath);
     dom.blackStageText.textContent = describePathStage(state.blackPath);
-    dom.statusList.innerHTML = "";
-    const counts = getAlignmentCounts();
-    const statusLabels = state.statuses.map((item) => `${item.name} ${item.remaining.toFixed(1)}s`);
-    if (state.player.barrier > 0) statusLabels.push(`护体 ${Math.ceil(state.player.barrier)}`);
-    if (state.blackMomentumStacks > 0 && state.blackMomentumTimer > 0) {
-      statusLabels.push(`袭势 ${state.blackMomentumStacks}层 ${state.blackMomentumTimer.toFixed(1)}s`);
+    if (dom.nodeHint) dom.nodeHint.innerHTML = pathHintHtml;
+    dom.statusList.innerHTML = statusItems
+      .slice(0, 6)
+      .map((item) => `
+        <button
+          class="status-pill inspectable"
+          type="button"
+          data-inspect-group="status"
+          data-inspect-key="${item.key}"
+        >${item.label}</button>
+      `)
+      .join("");
+    if (dom.destinyList) {
+      dom.destinyList.innerHTML = destinyItems
+        .map((item) => item.inspectable
+          ? `
+            <button
+              class="destiny-card inspectable"
+              type="button"
+              data-inspect-group="destiny"
+              data-inspect-key="${item.key}"
+            >
+              <strong>${item.title}</strong>
+              <span>${item.body}</span>
+            </button>
+          `
+          : `
+            <div class="destiny-card empty">
+              <strong>${item.title}</strong>
+              <span>${item.body}</span>
+            </div>
+          `)
+        .join("");
     }
-    statusLabels.push(`白点化 ${state.whiteInfusionPoints}`);
-    statusLabels.push(`黑点化 ${state.blackInfusionPoints}`);
-    statusLabels.push(`白命格 ${counts.white}`);
-    statusLabels.push(`黑命格 ${counts.black}`);
-    statusLabels.push(`混元命格 ${counts.mixed}`);
-    statusLabels.slice(0, 6).forEach((label) => {
-      const pill = document.createElement("div");
-      pill.className = "status-pill";
-      pill.textContent = label;
-      dom.statusList.appendChild(pill);
-    });
     renderSkillBar();
   }
 
@@ -181,7 +270,19 @@
         max_hp: Math.round(state.player.maxHp),
         barrier: Math.round(state.player.barrier),
         level: state.player.level,
-        skills: state.player.skillOrder.map((id) => ({ id, rank: state.player.skills[id].rank })),
+        skills: state.player.skillOrder.map((id) => {
+          const skill = state.player.skills[id];
+          const routeTable = skillRouteTable[id];
+          const routeId = skill.route || routeTable?.defaultRoute || null;
+          const activeRoute = routeId && routeTable?.routes?.[routeId] ? routeTable.routes[routeId] : null;
+          return {
+            id,
+            rank: skill.rank,
+            route: routeId,
+            route_label: activeRoute?.label || "未分路",
+            active_name: activeRoute?.activeName || skills[id]?.name || id,
+          };
+        }),
       },
       paths: {
         white: { value: Math.round(state.whitePath.value), cap: state.whitePath.cap, full: state.whitePath.full, stage: describePathStage(state.whitePath) },
@@ -192,7 +293,7 @@
         black: state.blackInfusionPoints,
       },
       destinies: {
-        owned: getOwnedDestinyEntries().map((entry) => ({ id: entry.id, level: entry.level, alignment: getEntryAlignment(entry) })),
+        owned: getOwnedDestinyEntries().map((entry) => ({ id: entry.id, alignment: getEntryAlignment(entry) })),
         equipped: metaState.destiny.equipped,
       },
       enemy_count: state.enemies.length,
@@ -205,8 +306,19 @@
         color: enemy.color,
       })),
       boss: state.boss ? { hp: Math.round(state.boss.hp), phase: state.boss.phase } : null,
+      active_effects: state.activeEffects.slice(0, 6).map((effect) => ({
+        kind: effect.kind,
+        x: Math.round(effect.x ?? effect.startX ?? 0),
+        y: Math.round(effect.y ?? effect.startY ?? 0),
+        time: Number((effect.time || 0).toFixed(2)),
+      })),
       pending_levelups: state.pendingLevelUps,
       current_modal: state.currentModal,
+      economy: {
+        dao_marks: state.daoMarks,
+        last_run_dao_marks: state.lastRunDaoMarks,
+        reincarnation_points: metaState.points,
+      },
       meta: {
         points: metaState.points,
         upgrades: metaState.upgrades,

@@ -3,6 +3,7 @@
     META,
     baseStats,
     DESTINY_SLOT_CAP,
+    DESTINY_POOL_VERSION,
     RESULT_DEATH,
     RESULT_CLEAR,
     HUMAN_ENDING_DESTINY_ID,
@@ -11,45 +12,79 @@
 
   const ALL_DESTINY_IDS = Object.keys(destinyCatalog);
 
-  function ensureMetaCollections(metaState) {
-    if (!metaState.destiny) metaState.destiny = {
+  function createFreshDestinyState() {
+    return {
       owned: {},
       equipped: [],
       unlocked: [...ALL_DESTINY_IDS],
       maxSlots: DESTINY_SLOT_CAP,
+      version: DESTINY_POOL_VERSION,
     };
-    if (!metaState.destiny.owned) metaState.destiny.owned = {};
-    if (!metaState.destiny.equipped) metaState.destiny.equipped = [];
+  }
+
+  function getDefaultEquippedIds(ownedState) {
+    return Object.keys(ownedState || {})
+      .filter((id) => !!destinyCatalog[id])
+      .slice(0, DESTINY_SLOT_CAP);
+  }
+
+  function createMigratedDestinyState(destinyState) {
+    if (!destinyState || typeof destinyState !== "object") return createFreshDestinyState();
+    const owned = destinyState.owned && typeof destinyState.owned === "object"
+      ? { ...destinyState.owned }
+      : {};
+    const equipped = Array.isArray(destinyState.equipped) ? [...destinyState.equipped] : [];
+    const unlocked = Array.isArray(destinyState.unlocked) ? [...destinyState.unlocked] : [...ALL_DESTINY_IDS];
+    return {
+      owned,
+      equipped: equipped.length ? equipped : getDefaultEquippedIds(owned),
+      unlocked,
+      maxSlots: DESTINY_SLOT_CAP,
+      version: DESTINY_POOL_VERSION,
+    };
+  }
+
+  function ensureMetaCollections(metaState) {
+    if (!metaState.destiny || typeof metaState.destiny !== "object") {
+      metaState.destiny = createFreshDestinyState();
+    } else if (metaState.destiny.version !== DESTINY_POOL_VERSION) {
+      metaState.destiny = createMigratedDestinyState(metaState.destiny);
+    }
+    if (!metaState.destiny.owned || typeof metaState.destiny.owned !== "object") metaState.destiny.owned = {};
+    if (!Array.isArray(metaState.destiny.equipped)) metaState.destiny.equipped = [];
     if (!Array.isArray(metaState.destiny.unlocked)) metaState.destiny.unlocked = [...ALL_DESTINY_IDS];
     metaState.destiny.maxSlots = DESTINY_SLOT_CAP;
+    metaState.destiny.version = DESTINY_POOL_VERSION;
     metaState.destiny.unlocked = [...new Set(
       metaState.destiny.unlocked
         .filter((id) => !!destinyCatalog[id])
         .concat(Object.keys(metaState.destiny.owned).filter((id) => !!destinyCatalog[id])),
     )];
+    if (!metaState.destiny.unlocked.length) metaState.destiny.unlocked = [...ALL_DESTINY_IDS];
+
     Object.entries(metaState.destiny.owned).forEach(([id, entry]) => {
       const def = destinyCatalog[id];
       if (!def) return;
       if (!entry || typeof entry !== "object") {
-        metaState.destiny.owned[id] = { level: 1, alignment: def.alignment };
+        metaState.destiny.owned[id] = { alignment: def.alignment };
         return;
       }
-      if (!entry.level) entry.level = 1;
-      if (!entry.alignment) entry.alignment = def.alignment;
+      entry.alignment = def.alignment;
+      delete entry.level;
     });
+
     metaState.destiny.owned = Object.fromEntries(
       Object.entries(metaState.destiny.owned).filter(([id, entry]) => !!destinyCatalog[id] && !!entry),
     );
+
     const equippedIds = [];
     metaState.destiny.equipped.forEach((id) => {
       if (!metaState.destiny.owned[id] || equippedIds.includes(id) || equippedIds.length >= DESTINY_SLOT_CAP) return;
       equippedIds.push(id);
     });
     if (!equippedIds.length) {
-      Object.keys(metaState.destiny.owned).some((id) => {
-        if (equippedIds.length >= DESTINY_SLOT_CAP) return true;
-        equippedIds.push(id);
-        return false;
+      getDefaultEquippedIds(metaState.destiny.owned).forEach((id) => {
+        if (!equippedIds.includes(id) && equippedIds.length < DESTINY_SLOT_CAP) equippedIds.push(id);
       });
     }
     metaState.destiny.equipped = equippedIds;
@@ -88,38 +123,32 @@
   function getAlignmentCounts(metaState) {
     const counts = { white: 0, black: 0, mixed: 0 };
     getEquippedDestinyEntries(metaState).forEach((entry) => {
-      const alignment = getEntryAlignment(entry);
-      counts[alignment] = (counts[alignment] || 0) + 1;
+      counts[getEntryAlignment(entry)] += 1;
     });
     return counts;
   }
 
   function getAlignmentResult(state, metaState) {
     const counts = getAlignmentCounts(metaState);
-    const hasHumanEnding = getEquippedDestinyEntries(metaState).some((entry) => entry.id === HUMAN_ENDING_DESTINY_ID);
-    if (!hasHumanEnding && counts.white === counts.black) return "鎴愪粰";
+    const hasHumanEnding = HUMAN_ENDING_DESTINY_ID
+      ? getEquippedDestinyEntries(metaState).some((entry) => entry.id === HUMAN_ENDING_DESTINY_ID)
+      : false;
     if (hasHumanEnding) return "成人（Be Human）";
     if (counts.white > counts.black) return "成仙";
     if (counts.black > counts.white) return "化魔";
     if ((state?.whitePath?.value || 0) > (state?.blackPath?.value || 0)) return "成仙";
     if ((state?.blackPath?.value || 0) > (state?.whitePath?.value || 0)) return "化魔";
-    return "成仙";
+    return "成人（Be Human）";
   }
 
   function getDestinyWeight(alignment, state, metaState) {
-    let weight = alignment === "mixed" ? 0.9 : 1;
+    let weight = alignment === "mixed" ? 0.92 : 1;
     const counts = getAlignmentCounts(metaState);
-    state = {
-      ...state,
-      whitePath: { ...state?.whitePath, full: false },
-      blackPath: { ...state?.blackPath, full: false },
-    };
-    if (alignment === "white" && state?.whitePath?.full) weight *= 1.1;
-    if (alignment === "black" && state?.blackPath?.full) weight *= 1.1;
-    if (alignment === "white" && counts.white >= 2) weight *= 1.25;
-    if (alignment === "black" && counts.black >= 2) weight *= 1.25;
-    if (alignment === "white" && counts.white >= 4) weight *= 1.6;
-    if (alignment === "black" && counts.black >= 4) weight *= 1.6;
+    if (alignment === "white" && counts.white > counts.black) weight *= 1.2;
+    if (alignment === "black" && counts.black > counts.white) weight *= 1.2;
+    if (alignment === "mixed" && counts.white > 0 && counts.black > 0) weight *= 1.25;
+    if (alignment === "white" && (state?.whiteInfusionPoints || 0) > (state?.blackInfusionPoints || 0)) weight *= 1.08;
+    if (alignment === "black" && (state?.blackInfusionPoints || 0) > (state?.whiteInfusionPoints || 0)) weight *= 1.08;
     return weight;
   }
 
@@ -130,7 +159,7 @@
       roll -= item.weight;
       if (roll <= 0) return item.value;
     }
-    return items[items.length - 1].value;
+    return items[items.length - 1]?.value;
   }
 
   function getMissingDestinyIds(metaState) {
@@ -156,9 +185,9 @@
     return offers;
   }
 
-  function describeDestiny(id, alignment = destinyCatalog[id].alignment, level = 1) {
+  function describeDestiny(id, alignment = destinyCatalog[id].alignment) {
     const def = destinyCatalog[id];
-    return `${def.name} [${alignment}] Lv.${level} - ${def.text[alignment]}`;
+    return `${def.name} [${alignment}] - ${getDestinyText(def, alignment)}`;
   }
 
   function getAlignmentLabel(alignment) {
@@ -179,116 +208,13 @@
       .filter((entry) => entry?.def);
   }
 
-  const DESTINY_BONUS_HANDLERS = {
-    vital: {
-      white: (level, player) => {
-        player.maxHp += 18 * level;
-        player.regen += 0.08 * level;
-      },
-      black: (level, player, mods) => {
-        mods.damageMult += 0.06 * level;
-      },
-      mixed: (level, player) => {
-        player.pickupRange += 10 * level;
-      },
-    },
-    spirit: {
-      white: (level, player, mods) => {
-        mods.xpGainMult += 0.1 * level;
-      },
-      black: (level, player) => {
-        player.critChance += 0.04 * level;
-      },
-      mixed: (level, player) => {
-        player.speed += 10 * level;
-      },
-    },
-    river: {
-      white: (level, player, mods) => {
-        mods.whiteGainMult += 0.12 * level;
-      },
-      black: (level, player, mods) => {
-        mods.blackGainMult += 0.12 * level;
-      },
-      mixed: (level, player, mods) => {
-        mods.whiteGainMult += 0.05 * level;
-        mods.blackGainMult += 0.05 * level;
-      },
-    },
-    blade: {
-      white: (level, player, mods) => {
-        mods.incomingMult *= Math.max(0.65, 1 - 0.08 * level);
-      },
-      black: (level, player) => {
-        player.critDamage += 0.18 * level;
-      },
-      mixed: (level, player) => {
-        player.globalCooldown *= Math.max(0.75, 1 - 0.06 * level);
-      },
-    },
-    thunder: {
-      white: (level, player, mods) => {
-        player.regen += 0.06 * level;
-        mods.xpGainMult += 0.06 * level;
-      },
-      black: (level, player, mods) => {
-        mods.damageMult += 0.05 * level;
-        player.globalCooldown *= Math.max(0.72, 1 - 0.05 * level);
-      },
-      mixed: (level, player) => {
-        player.speed += 8 * level;
-        player.pickupRange += 8 * level;
-      },
-    },
-    ward: {
-      white: (level, player, mods) => {
-        player.maxHp += 14 * level;
-        mods.whiteGainMult += 0.08 * level;
-      },
-      black: (level, player, mods) => {
-        player.critChance += 0.03 * level;
-        mods.blackGainMult += 0.08 * level;
-      },
-      mixed: (level, player, mods) => {
-        mods.damageMult += 0.04 * level;
-      },
-    },
-    reaper: {
-      white: (level, player) => {
-        player.maxHp += 24 * level;
-        player.regen += 0.1 * level;
-      },
-      black: (level, player, mods) => {
-        mods.damageMult += 0.1 * level;
-        player.critChance += 0.04 * level;
-      },
-      mixed: (level, player, mods) => {
-        mods.damageMult += 0.05 * level;
-        mods.xpGainMult += 0.06 * level;
-      },
-    },
-    lotus: {
-      white: (level, player, mods) => {
-        mods.xpGainMult += 0.14 * level;
-        player.regen += 0.1 * level;
-      },
-      black: (level, player, mods) => {
-        mods.blackGainMult += 0.14 * level;
-        mods.damageMult += 0.06 * level;
-      },
-      mixed: (level, player) => {
-        player.speed += 12 * level;
-        player.pickupRange += 12 * level;
-      },
-    },
-  };
+  const DESTINY_BONUS_HANDLERS = {};
 
   function applyDestinyBonusesFromEntries(entries, player, mods) {
     entries.forEach((entry) => {
-      const level = entry.level || 1;
       const alignment = getEntryAlignment(entry);
       const handler = DESTINY_BONUS_HANDLERS[entry.id]?.[alignment];
-      if (handler) handler(level, player, mods);
+      if (handler) handler(1, player, mods);
     });
   }
 
@@ -354,7 +280,7 @@
     if (after.xpGainMult !== before.xpGainMult) deltas.push(`经验 ${formatSignedStat((after.xpGainMult - before.xpGainMult) * 100)}%`);
     if (after.whiteGainMult !== before.whiteGainMult) deltas.push(`白槽 ${formatSignedStat((after.whiteGainMult - before.whiteGainMult) * 100)}%`);
     if (after.blackGainMult !== before.blackGainMult) deltas.push(`黑槽 ${formatSignedStat((after.blackGainMult - before.blackGainMult) * 100)}%`);
-    return deltas.length ? `预览：${deltas.join(" | ")}` : "预览：属性无变化";
+    return deltas.length ? `预览：${deltas.join(" | ")}` : "预览：规则效果型命格，基础属性无变化";
   }
 
   function getPointifyPreviewRows(metaState, targetId, color) {
@@ -380,7 +306,7 @@
 
   function getPointifyEquipPreview(metaState, nextId) {
     if (metaState.destiny.equipped.length >= metaState.destiny.maxSlots) {
-      return "当前命盘已满，可在“更换命格”中查看替换后的属性变化。";
+      return "当前命盘已满，可在“更换命格”中查看替换后的变化。";
     }
     const before = createDestinyPreviewSnapshot(metaState, metaState.destiny.equipped);
     const after = createDestinyPreviewSnapshot(metaState, [...metaState.destiny.equipped, nextId]);

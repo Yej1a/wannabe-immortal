@@ -29,7 +29,7 @@ body {
 }
 
 .shell {
-  width: min(1400px, 100%);
+  width: min(1680px, 100%);
   margin: 0 auto;
   padding: 20px;
 }
@@ -82,7 +82,7 @@ body {
 
 .game-layout {
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 260px;
+  grid-template-columns: 260px minmax(0, 1fr) 260px 260px;
   gap: 18px;
   align-items: start;
 }
@@ -97,6 +97,10 @@ body {
 
 .hud {
   padding: 16px;
+}
+
+.info-panel {
+  min-height: 100%;
 }
 
 .panel-block + .panel-block {
@@ -141,18 +145,16 @@ body {
   padding: 12px;
 }
 
-.timer-row {
+.phase-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   padding: 6px 8px 12px;
   color: var(--muted);
 }
 
-#timer-text {
-  font-size: 28px;
-  color: var(--gold);
-  font-weight: 700;
+#phase-text {
+  font-size: 14px;
+  letter-spacing: 0.04em;
 }
 
 canvas {
@@ -220,11 +222,112 @@ canvas {
 }
 
 .skill-card {
+  width: 100%;
   min-height: 66px;
   padding: 10px;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.skill-card.empty {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.skill-copy {
+  min-width: 0;
+}
+
+.skill-icon {
+  --skill-primary: #eef5f7;
+  --skill-secondary: #7ca0b8;
+  --skill-glow: rgba(255, 255, 255, 0.12);
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--skill-primary) 20%, transparent), transparent 45%),
+    linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: grid;
+  place-items: center;
+  box-shadow: inset 0 0 18px var(--skill-glow);
+}
+
+.skill-icon svg {
+  width: 34px;
+  height: 34px;
+  overflow: visible;
+}
+
+.skill-icon-bg {
+  fill: rgba(255, 255, 255, 0.04);
+  stroke: color-mix(in srgb, var(--skill-primary) 60%, white);
+  stroke-width: 1.3;
+}
+
+.skill-icon-main {
+  fill: var(--skill-primary);
+  stroke: color-mix(in srgb, var(--skill-secondary) 55%, transparent);
+  stroke-width: 1;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.skill-icon-edge {
+  fill: color-mix(in srgb, var(--skill-primary) 68%, white);
+  stroke: color-mix(in srgb, var(--skill-secondary) 50%, transparent);
+  stroke-width: 0.9;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.skill-icon-ring {
+  fill: none;
+  stroke: color-mix(in srgb, var(--skill-primary) 55%, white);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  opacity: 0.88;
+}
+
+.skill-icon-empty {
+  --skill-primary: rgba(255, 255, 255, 0.45);
+  --skill-secondary: rgba(255, 255, 255, 0.2);
+  --skill-glow: rgba(255, 255, 255, 0.08);
+}
+
+.skill-icon-empty-ring,
+.skill-icon-empty-line {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.4);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.inspectable {
+  transition: border-color 140ms ease, transform 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.inspectable:hover,
+.inspectable:focus-visible {
+  border-color: rgba(213, 187, 99, 0.42);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.18);
+  outline: none;
+}
+
+.inspectable.is-inspected {
+  border-color: rgba(124, 224, 184, 0.45);
+  background: linear-gradient(180deg, rgba(124, 224, 184, 0.14), rgba(255, 255, 255, 0.04));
 }
 
 .skill-name {
@@ -245,16 +348,127 @@ canvas {
 }
 
 .status-pill {
+  appearance: none;
+  border: 1px solid transparent;
   padding: 6px 10px;
   border-radius: 999px;
   font-size: 12px;
   background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.status-pill:focus-visible {
+  outline: none;
+}
+
+.destiny-list {
+  display: grid;
+  gap: 8px;
+}
+
+.destiny-card {
+  appearance: none;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.destiny-card strong,
+.destiny-card span {
+  display: block;
+}
+
+.destiny-card strong {
+  margin-bottom: 4px;
+  font-size: 13px;
+}
+
+.destiny-card span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.destiny-card.empty {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.inspect-panel {
+  min-height: 188px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at top right, rgba(213, 187, 99, 0.08), transparent 28%),
+    rgba(255, 255, 255, 0.04);
+}
+
+.inspect-panel.empty {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.inspect-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.inspect-meta {
+  color: var(--gold);
+  font-size: 12px;
+  margin-bottom: 10px;
+  line-height: 1.55;
+}
+
+.inspect-body {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.inspect-lines {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.inspect-line {
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .node-hint {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.6;
+}
+
+.path-hint-block + .path-hint-block {
+  margin-top: 12px;
+}
+
+.path-hint-title {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.path-hint-body + .path-hint-body {
+  margin-top: 6px;
 }
 
 .modal-root {
@@ -483,6 +697,20 @@ canvas {
   color: var(--muted);
   line-height: 1.8;
   margin-bottom: 6px;
+}
+
+@media (max-width: 1520px) {
+  .shell {
+    width: min(1440px, 100%);
+  }
+
+  .game-layout {
+    grid-template-columns: 260px minmax(0, 1fr) 260px;
+  }
+
+  .info-panel {
+    grid-column: 3;
+  }
 }
 
 @media (max-width: 1120px) {

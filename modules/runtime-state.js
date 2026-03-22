@@ -5,6 +5,7 @@
     PATH_COMBAT,
     FIRST_PATH_CAP,
     DESTINY_SLOT_CAP,
+    DESTINY_POOL_VERSION,
     baseStats,
     destinyCatalog,
   } = global.GameData;
@@ -34,6 +35,7 @@
         equipped: [],
         unlocked: Object.keys(destinyCatalog),
         maxSlots: DESTINY_SLOT_CAP,
+        version: DESTINY_POOL_VERSION,
       },
     };
   }
@@ -79,6 +81,8 @@
     const player = {
       x: width / 2,
       y: height / 2,
+      facingX: 1,
+      facingY: 0,
       radius: 16,
       maxHp: baseStats.maxHp + hpBonus,
       hp: baseStats.maxHp + hpBonus,
@@ -112,6 +116,7 @@
       enemies: [],
       projectiles: [],
       enemyProjectiles: [],
+      activeEffects: [],
       drops: [],
       pulses: [],
       boss: null,
@@ -132,6 +137,8 @@
       campaign: createCampaignState(),
       currentDestinyOffers: [],
       lastRunPoints: 0,
+      lastRunDaoMarks: 0,
+      daoMarks: 0,
       pendingMiniBossReward: false,
       whiteInfusionPoints: 0,
       blackInfusionPoints: 0,
@@ -142,6 +149,13 @@
       blackMomentumStacks: 0,
       blackMomentumTimer: 0,
       blackMomentumCooldown: 0,
+      branchWindowCounter: 0,
+      pendingFreeShopRefreshes: 0,
+      shopFreeRefreshes: 0,
+      shopDestinyOffers: [],
+      dandingTriggerCount: 0,
+      pendingActiveSacrificeBoost: 0,
+      routeShiftNotice: "",
     };
   }
 

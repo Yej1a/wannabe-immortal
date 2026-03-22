@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Wannabe Immortal</title>
-  <link rel="stylesheet" href="./styles.css?v=20260320-1">
+  <link rel="stylesheet" href="./styles.css?v=20260322-1">
 </head>
 <body>
   <div class="shell">
@@ -14,7 +14,7 @@
         <div class="subtitle">10-minute cultivation roguelite prototype</div>
       </div>
       <div class="topbar-actions">
-        <button id="pause-btn" class="action-btn pause-btn" type="button" disabled>Pause</button>
+        <button id="pause-btn" class="action-btn pause-btn" type="button" disabled>暂停</button>
         <button id="clear-save-btn" class="action-btn" type="button">清空存档</button>
         <button id="start-btn" class="start-btn" type="button">开始试炼</button>
       </div>
@@ -33,16 +33,19 @@
           <div class="small-title">状态</div>
           <div id="status-list" class="status-list"></div>
         </div>
+        <div class="panel-block">
+          <div class="small-title">命格</div>
+          <div id="destiny-list" class="destiny-list"></div>
+        </div>
       </section>
       <section class="center-stage">
-        <div class="timer-row">
+        <div class="phase-row">
           <span id="phase-text">待开始</span>
-          <span id="timer-text">10:00</span>
         </div>
         <canvas id="game" width="960" height="540"></canvas>
         <div id="overlay-message" class="overlay-message show">
           <div class="overlay-title">修仙肉鸽原型</div>
-          <div class="overlay-body">WASD 移动，自动释放术法。按下开始进入试炼。</div>
+          <div class="overlay-body">WASD 移动，术法会自动施放。按下开始进入试炼。</div>
         </div>
         <div id="toast" class="toast"></div>
         <div id="skill-bar" class="skill-bar"></div>
@@ -58,11 +61,21 @@
           <div class="label-row"><span id="black-stage-text">黑槽推进</span><span id="black-text"></span></div>
           <div class="meter dual"><div id="black-fill" class="fill black"></div></div>
         </div>
+      </section>
+      <aside class="hud info-panel">
         <div class="panel-block">
           <div class="small-title">提示</div>
-          <div class="node-hint">黑白槽满时，可在关后改写命格道性。</div>
+          <div class="node-hint">黑白槽满时可用于战斗释放；累计满槽后获得的黑白点则用于点化命格。</div>
         </div>
-      </section>
+        <div class="panel-block">
+          <div class="small-title">查看详情</div>
+          <div id="inspect-panel" class="inspect-panel empty">
+            <div class="inspect-title">悬停查看当前构筑</div>
+            <div class="inspect-meta">悬停或点击状态、术法、命格，都能在这里查看详细信息。</div>
+            <div class="inspect-body">点击后会锁定当前条目，再点一次即可取消锁定。</div>
+          </div>
+        </div>
+      </aside>
     </main>
   </div>
 
@@ -71,9 +84,17 @@
   <script src="./balance.js?v=20260320-2"></script>
   <script src="./modules/game-data.js?v=20260320-2"></script>
   <script src="./modules/runtime-state.js?v=20260320-2"></script>
-  <script src="./modules/destiny-helpers.js?v=20260320-2"></script>
-  <script src="./modules/game-ui.js?v=20260320-3"></script>
+  <script src="./modules/destiny-helpers.js?v=20260322-1"></script>
+  <script src="./modules/game-ui.js?v=20260322-1"></script>
+  <script src="./modules/gameplay-helpers.js?v=20260322-1"></script>
+  <script src="./modules/inspect-system.js?v=20260322-1"></script>
+  <script src="./modules/flow/run-flow.js?v=20260322-1"></script>
+  <script src="./modules/flow/destiny-flow.js?v=20260322-1"></script>
+  <script src="./modules/flow/shop-flow.js?v=20260322-1"></script>
+  <script src="./modules/flow/reincarnation-flow.js?v=20260322-1"></script>
+  <script src="./modules/systems/combat-update.js?v=20260322-1"></script>
+  <script src="./modules/render/game-renderer.js?v=20260322-1"></script>
   <script src="./modules/debug-tools.js?v=20260320-3"></script>
-  <script src="./app.js?v=20260320-3"></script>
+  <script src="./app.js?v=20260322-3"></script>
 </body>
 </html>
