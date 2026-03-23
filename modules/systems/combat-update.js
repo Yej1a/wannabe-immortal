@@ -146,6 +146,23 @@
       });
     }
 
+    function maybeFireMiniBossProjectile(enemy, profile, dt, dx, dy, dist) {
+      if (!profile?.shotCooldown || !profile?.projectileSpeed || !profile?.projectileCount) return false;
+      enemy.miniBossShotTimer = (enemy.miniBossShotTimer ?? (profile.shotCooldown * 0.6)) - dt;
+      if (enemy.miniBossShotTimer > 0) return false;
+      if (dist < (profile.minRangedDistance || 0)) return false;
+      const baseAngle = Math.atan2(dy, dx);
+      const projectileCount = profile.projectileCount || 1;
+      const spread = profile.spread || 0;
+      for (let i = 0; i < projectileCount; i += 1) {
+        const angle = baseAngle + (i - (projectileCount - 1) / 2) * spread;
+        spawnEnemyProjectile(enemy, angle, profile.projectileSpeed, profile.projectileRadius || 7);
+      }
+      enemy.miniBossShotTimer = profile.shotCooldown;
+      pushMiniBossVisual(enemy, enemy.radius + 18);
+      return true;
+    }
+
     function moveEnemyTowardPlayer(enemy, dt, dx, dy, dist, speed, overlap, tangentScale = 0.55) {
       if (overlap > 0) {
         const tangentX = -dy / dist;
@@ -282,6 +299,7 @@
           }
         } else if (enemy.miniBossState === "recover") {
           enemy.miniBossStateTimer -= dt;
+          maybeFireMiniBossProjectile(enemy, profile, dt, dx, dy, dist);
           if (enemy.miniBossStateTimer <= 0) {
             enemy.miniBossState = "idle";
             enemy.miniBossStateTimer = profile.dashCooldown || 2.7;
@@ -289,6 +307,7 @@
         } else {
           enemy.miniBossStateTimer -= dt;
           moveEnemyTowardPlayer(enemy, dt, dx, dy, dist, enemy.speed * speedMult * 0.9, overlap, 0.48);
+          maybeFireMiniBossProjectile(enemy, profile, dt, dx, dy, dist);
           if (enemy.miniBossStateTimer <= 0) {
             enemy.miniBossState = "windup";
             enemy.miniBossStateTimer = profile.windup || 0.4;
@@ -336,6 +355,7 @@
         enemy.x += tangentX * enemy.speed * speedMult * (profile.orbitSpeedMult || 0.56) * dt;
         enemy.y += tangentY * enemy.speed * speedMult * (profile.orbitSpeedMult || 0.56) * dt;
       }
+      maybeFireMiniBossProjectile(enemy, profile, dt, dx, dy, dist);
       if (enemy.miniBossPulseTimer <= 0 && dist <= (profile.pulseTriggerRange || 176)) {
         enemy.miniBossState = "pulse-windup";
         enemy.miniBossStateTimer = profile.pulseTelegraph || 0.78;

@@ -400,6 +400,7 @@
         black: { value: Math.round(state.blackPath.value), cap: state.blackPath.cap, full: state.blackPath.full, stage: describePathStage(state.blackPath) },
       },
       infusion_points: {
+        total: state.whiteInfusionPoints + state.blackInfusionPoints,
         white: state.whiteInfusionPoints,
         black: state.blackInfusionPoints,
       },

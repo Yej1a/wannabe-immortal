@@ -443,13 +443,13 @@
           <strong class="path-hint-title">白槽说明</strong>
           <div class="path-hint-body">${whiteRelease}</div>
           <div class="path-hint-body">白道感悟：持续 4 秒未受伤后，每 6 秒额外获得 3 点白道值；生命高于 75% 时击杀精英或小 Boss，额外获得 8 点白道值。</div>
-          <div class="path-hint-body">白槽每累计满 1 次，白点化点 +1。当前白点 ${state.whiteInfusionPoints}，用于白道点化命格，不消耗当前白槽。</div>
+          <div class="path-hint-body">白槽每累计满 1 次，点化机会 +1。当前白槽累计提供 ${state.whiteInfusionPoints} 次机会；点化统一从同一个命格池抽取，不消耗当前白槽。</div>
         </div>
         <div class="path-hint-block">
           <strong class="path-hint-title">黑槽说明</strong>
           <div class="path-hint-body">${blackRelease}</div>
           <div class="path-hint-body">黑道感悟：生命低于 45% 时完成击杀，额外获得 2 点黑道值，内置冷却 1.2 秒；近身击杀精英或小 Boss，额外获得 8 点黑道值。</div>
-          <div class="path-hint-body">黑槽每累计满 1 次，黑点化点 +1。当前黑点 ${state.blackInfusionPoints}，用于黑道点化命格，不消耗当前黑槽。</div>
+          <div class="path-hint-body">黑槽每累计满 1 次，点化机会 +1。当前黑槽累计提供 ${state.blackInfusionPoints} 次机会；点化统一从同一个命格池抽取，不消耗当前黑槽。</div>
         </div>
       `;
     }

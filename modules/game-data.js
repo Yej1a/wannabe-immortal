@@ -8,6 +8,11 @@
   const META = BALANCE.reincarnationTable;
   const PATH_COMBAT = BALANCE.pathCombat;
   const PATH_THRESHOLDS = PATH_COMBAT.thresholds;
+  const DESTINY_TIER_WEIGHTS = BALANCE.destinyTable?.tierWeights || {
+    common: 1,
+    true: 0.38,
+    fated: 0.12,
+  };
 
   const COLORS = {
     bg: "#091019",
@@ -787,6 +792,7 @@
     META,
     PATH_COMBAT,
     PATH_THRESHOLDS,
+    DESTINY_TIER_WEIGHTS,
     COLORS,
     baseStats,
     xpCurve,

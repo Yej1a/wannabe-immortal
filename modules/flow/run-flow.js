@@ -27,6 +27,10 @@
     } = deps;
     const STARTER_SKILL_POOL = ["sword", "thunder", "flame"];
 
+    function getInfusionPointTotal() {
+      return state.whiteInfusionPoints + state.blackInfusionPoints;
+    }
+
     function resetGame() {
       dom.startBtn.blur();
       state.manualPause = false;
@@ -119,8 +123,7 @@
           <div class="summary-card"><div class="summary-label">下一场</div><div class="summary-value">${getNextStageLabel()}</div></div>
           <div class="summary-card"><div class="summary-label">命格槽</div><div class="summary-value">${equipped.length}/${metaState.destiny.maxSlots}</div></div>
           <div class="summary-card"><div class="summary-label">当前法术</div><div class="summary-value">${state.player.skillOrder.length}</div></div>
-          <div class="summary-card"><div class="summary-label">白点化点</div><div class="summary-value">${state.whiteInfusionPoints}</div></div>
-          <div class="summary-card"><div class="summary-label">黑点化点</div><div class="summary-value">${state.blackInfusionPoints}</div></div>
+          <div class="summary-card"><div class="summary-label">点化机会</div><div class="summary-value">${getInfusionPointTotal()}</div></div>
         </div>
         <div class="reincarnation-section-title">当前命格</div>
         <div class="choice-list">${equippedHtml}</div>
@@ -168,8 +171,8 @@
           {
             title: "道途点化",
             body: canPointify
-              ? `消耗白/黑点化点重抽当前已镶嵌命格。当前白点 ${state.whiteInfusionPoints} | 黑点 ${state.blackInfusionPoints}`
-              : "当前没有可用点化点，或没有已镶嵌命格可供点化。",
+              ? `消耗 1 次点化机会重抽当前已镶嵌命格。当前可用 ${getInfusionPointTotal()} 次。`
+              : "当前没有可用点化机会，或没有已镶嵌命格可供点化。",
             onClick: () => {
               if (!canPointify) return;
               openDaoPointifyModal(() => openStagePreparationModal());

@@ -124,7 +124,11 @@ const {
   getEquippedDestinyEntries: getEquippedDestinyEntriesImpl,
   getAlignmentCounts: getAlignmentCountsImpl,
   getAlignmentResult: getAlignmentResultImpl,
+  getDestinyTierLabel: getDestinyTierLabelImpl,
+  getDestinyWeight: getDestinyWeightImpl,
   getMissingDestinyIds: getMissingDestinyIdsImpl,
+  weightedPick: weightedPickImpl,
+  isDestinyOfferEligible: isDestinyOfferEligibleImpl,
   getRandomDestinyOffers: getRandomDestinyOffersImpl,
   getAlignmentLabel: getAlignmentLabelImpl,
   formatResultLabel: formatResultLabelImpl,
@@ -679,11 +683,11 @@ function maybeTriggerPathThresholds(path, previousValue) {
     if (path.color === "white") {
       state.whiteInfusionPoints += 1;
       emitPathReadyCue("white");
-      setToast({ text: "白槽已满", tone: "white-ready" });
+      setToast({ text: "白槽已满，点化机会 +1", tone: "white-ready" });
     } else {
       state.blackInfusionPoints += 1;
       emitPathReadyCue("black");
-      setToast({ text: "黑槽已满", tone: "black-ready" });
+      setToast({ text: "黑槽已满，点化机会 +1", tone: "black-ready" });
     }
   }
 }
@@ -3328,9 +3332,12 @@ destinyFlow = createDestinyFlow({
   getDestinyText,
   createDestinyPreviewSnapshot,
   describeDestinyStatDelta,
-  describePointifyPreview,
   getRandomDestinyOffers,
   getEquippedDestinyEntries,
+  getDestinyTierLabel: getDestinyTierLabelImpl,
+  getDestinyWeight: getDestinyWeightImpl,
+  weightedPick: weightedPickImpl,
+  isDestinyOfferEligible: (id) => isDestinyOfferEligibleImpl(id, state),
   hasInfusionPoints,
   onDestinyLoadoutChanged: notifyDestinyLoadoutChanged,
   saveMetaState,

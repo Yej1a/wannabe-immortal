@@ -9,9 +9,12 @@
       getDestinyText,
       createDestinyPreviewSnapshot,
       describeDestinyStatDelta,
-      describePointifyPreview,
       getRandomDestinyOffers,
       getEquippedDestinyEntries,
+      getDestinyTierLabel = () => "",
+      getDestinyWeight = () => 1,
+      weightedPick = () => null,
+      isDestinyOfferEligible = () => true,
       hasInfusionPoints,
       onDestinyLoadoutChanged = () => {},
       saveMetaState,
@@ -166,26 +169,50 @@
       return describeDestinyStatDelta(before, after);
     }
 
-    function pointifyDestiny(targetId, color) {
+    function getInfusionPointTotal() {
+      return state.whiteInfusionPoints + state.blackInfusionPoints;
+    }
+
+    function consumeInfusionPoint() {
+      if (state.whiteInfusionPoints > 0) {
+        state.whiteInfusionPoints -= 1;
+        return "white";
+      }
+      if (state.blackInfusionPoints > 0) {
+        state.blackInfusionPoints -= 1;
+        return "black";
+      }
+      return null;
+    }
+
+    function getPointifyPoolCandidates(targetId) {
+      const poolIds = Object.keys(destinyCatalog).filter((id) => {
+        const def = destinyCatalog[id];
+        if (!def || !isDestinyOfferEligible(id)) return false;
+        return id === targetId || !metaState.destiny.owned[id];
+      });
+      const rerollIds = poolIds.filter((id) => id !== targetId);
+      return rerollIds.length ? rerollIds : poolIds;
+    }
+
+    function pointifyDestiny(targetId) {
       const entry = metaState.destiny.owned[targetId];
       if (!entry) return;
-      if (color === "white" && state.whiteInfusionPoints <= 0) return;
-      if (color === "black" && state.blackInfusionPoints <= 0) return;
+      if (getInfusionPointTotal() <= 0) return;
       const previousDef = destinyCatalog[targetId];
       if (!previousDef) return;
       const previousAlignment = getEntryAlignment({ ...entry, def: previousDef });
-      const candidateIds = Object.keys(destinyCatalog).filter((id) => {
-        const def = destinyCatalog[id];
-        if (!def || def.alignment !== color) return false;
-        return id === targetId || !metaState.destiny.owned[id];
-      });
-      const rerollIds = candidateIds.filter((id) => id !== targetId);
-      const finalCandidateIds = rerollIds.length ? rerollIds : candidateIds;
+      const finalCandidateIds = getPointifyPoolCandidates(targetId);
       if (!finalCandidateIds.length) {
-        setToast(`${color === "white" ? "白道" : "黑道"}命格池当前没有可重抽结果`);
+        setToast("统一命格池当前没有可重抽结果");
         return;
       }
-      const nextId = finalCandidateIds[Math.floor(Math.random() * finalCandidateIds.length)] || targetId;
+      const nextId = weightedPick(
+        finalCandidateIds.map((id) => ({
+          value: id,
+          weight: getDestinyWeight(id),
+        })),
+      ) || targetId;
       const nextDef = destinyCatalog[nextId];
       const equipIndex = metaState.destiny.equipped.indexOf(targetId);
       delete metaState.destiny.owned[targetId];
@@ -195,15 +222,10 @@
       if (equipIndex >= 0) {
         metaState.destiny.equipped[equipIndex] = nextId;
       }
-      if (color === "white") {
-        state.whiteInfusionPoints -= 1;
-      } else {
-        state.blackInfusionPoints -= 1;
-      }
-      onDestinyLoadoutChanged(color === "white" ? "pointify_white" : "pointify_black");
+      consumeInfusionPoint();
+      onDestinyLoadoutChanged("pointify");
       saveMetaState();
       openDaoPointifyResultModal({
-        color,
         previousId: targetId,
         previousDef,
         previousAlignment,
@@ -213,7 +235,7 @@
       });
     }
 
-    function openPointifyConfirmModal(targetId, color) {
+    function openPointifyConfirmModal(targetId) {
       const entry = metaState.destiny.owned[targetId];
       const def = destinyCatalog[targetId];
       if (!entry || !def) return;
@@ -221,7 +243,7 @@
       state.currentModal = "dao-pointify-confirm";
       renderModal({
         title: "确认点化",
-        body: `${color === "white" ? "白道" : "黑道"}点化会立刻消耗 1 点${color === "white" ? "白" : "黑"}点化点，并永久替换这枚当前命格，本次操作不可逆转。`,
+        body: "点化会立刻消耗 1 次点化机会，并永久替换这枚当前命格，本次操作不可逆转。",
         bodyHtml: `
           <div class="reincarnation-summary dao-pointify-summary">
             <div class="summary-card">
@@ -234,20 +256,20 @@
             </div>
             <div class="summary-card">
               <div class="summary-label">点化结果</div>
-              <div class="summary-value">重抽替换</div>
+              <div class="summary-value">抽取后揭示</div>
             </div>
           </div>
-          <div class="dao-pointify-note">点化执行后，这枚命格会先回到公共池，再从${color === "white" ? "白道" : "黑道"}命格池重抽一枚新命格替换它；结果一旦生成，本次点化无法撤销。</div>
-          <div class="dao-pointify-note">结果预览：${describePointifyPreview(targetId, color)}</div>
+          <div class="dao-pointify-note">点化执行后，这枚命格会先回到统一命格池，再按品质权重随机抽取 1 枚可用命格替换它；凡命最常见，真传次之，天命最稀有。</div>
+          <div class="dao-pointify-note">抽取前不会提前展示结果，只有确认点化后才会揭示本次命格结果。</div>
         `,
         choices: [{
           title: "确认点化",
           body: "执行本次不可逆的点化操作。",
-          onClick: () => pointifyDestiny(targetId, color),
+          onClick: () => pointifyDestiny(targetId),
         }],
         actions: [{
           label: "返回目标选择",
-          onClick: () => openDaoPointifyTargetModal(color),
+          onClick: () => openDaoPointifyTargetModal(),
         }],
         className: "reincarnation-modal dao-pointify-modal",
       });
@@ -265,30 +287,11 @@
         continueInfusionFlow();
         return;
       }
-      const choices = [];
-      if (state.whiteInfusionPoints > 0) {
-        choices.push({
-          title: "白道点化",
-          body: `消耗 1 点白点化点，重抽一枚当前命格。当前白点化点：${state.whiteInfusionPoints}`,
-          onClick: () => openDaoPointifyTargetModal("white"),
-        });
-      }
-      if (state.blackInfusionPoints > 0) {
-        choices.push({
-          title: "黑道点化",
-          body: `消耗 1 点黑点化点，重抽一枚当前命格。当前黑点化点：${state.blackInfusionPoints}`,
-          onClick: () => openDaoPointifyTargetModal("black"),
-        });
-      }
-      if (!choices.length) {
-        continueInfusionFlow();
-        return;
-      }
       state.paused = true;
       state.currentModal = "dao-pointify";
       renderModal({
         title: "道途点化",
-        body: "消耗白/黑点化点，将一枚当前命格放回池中，再从对应颜色命格池重抽一枚。点化点来自局内黑白槽累计满槽次数，不消耗当前黑白槽。",
+        body: "消耗 1 次点化机会，将一枚当前命格放回统一命格池，再按品质权重重抽 1 枚命格。点化机会来自局内黑白槽累计满槽次数，不消耗当前黑白槽。",
         bodyHtml: `
           <div class="reincarnation-summary dao-pointify-summary">
             <div class="summary-card">
@@ -296,17 +299,21 @@
               <div class="summary-value">${targets.length}</div>
             </div>
             <div class="summary-card">
-              <div class="summary-label">白点化点</div>
-              <div class="summary-value">${state.whiteInfusionPoints}</div>
+              <div class="summary-label">点化机会</div>
+              <div class="summary-value">${getInfusionPointTotal()}</div>
             </div>
             <div class="summary-card">
-              <div class="summary-label">黑点化点</div>
-              <div class="summary-value">${state.blackInfusionPoints}</div>
+              <div class="summary-label">抽取规则</div>
+              <div class="summary-value">${getDestinyTierLabel("common")} > ${getDestinyTierLabel("true")} > ${getDestinyTierLabel("fated")}</div>
             </div>
           </div>
-          <div class="dao-pointify-note">点化会将所选当前命格放回命格池，再从你选择的白道或黑道命格池重抽一枚；命格本身的黑白归属是固定的，不会被点化改色。点化结果会立刻替换当前槽位生效。当前黑白槽只负责战斗状态，不会在此被消耗。</div>
+          <div class="dao-pointify-note">点化会将所选当前命格放回统一命格池，再从同一个大池中按品质权重随机抽取 1 枚可用命格；命格仍保留自身阵营标签，但点化本身不再区分白池或黑池。点化结果会立刻替换当前槽位生效。</div>
         `,
-        choices,
+        choices: [{
+          title: "进行点化",
+          body: `当前可用 ${getInfusionPointTotal()} 次点化机会。`,
+          onClick: () => openDaoPointifyTargetModal(),
+        }],
         className: "reincarnation-modal dao-pointify-modal",
         actions: [{
           label: "暂不点化",
@@ -319,34 +326,34 @@
       });
     }
 
-    function openDaoPointifyTargetModal(color) {
+    function openDaoPointifyTargetModal() {
       const targetEntries = getEquippedDestinyEntries();
       state.paused = true;
       state.currentModal = "dao-pointify-target";
       renderModal({
-        title: color === "white" ? "白道点化目标" : "黑道点化目标",
-        body: `选择一枚当前命格，消耗 1 点${color === "white" ? "白" : "黑"}点化点后，会将它放回池中，并从对应颜色命格池重抽一枚。`,
+        title: "选择点化目标",
+        body: "选择一枚当前命格，消耗 1 次点化机会后，会将它放回池中，并从统一命格池重新抽取一枚。",
         bodyHtml: `
           <div class="reincarnation-summary dao-pointify-summary">
             <div class="summary-card">
               <div class="summary-label">重抽池子</div>
-              <div class="summary-value">${color === "white" ? "白道命格池" : "黑道命格池"}</div>
+              <div class="summary-value">统一命格池</div>
             </div>
             <div class="summary-card">
-              <div class="summary-label">剩余点化点</div>
-              <div class="summary-value">${color === "white" ? state.whiteInfusionPoints : state.blackInfusionPoints}</div>
+              <div class="summary-label">剩余机会</div>
+              <div class="summary-value">${getInfusionPointTotal()}</div>
             </div>
             <div class="summary-card">
               <div class="summary-label">处理方式</div>
-              <div class="summary-value">重抽替换</div>
+              <div class="summary-value">确认后抽取</div>
             </div>
           </div>
-          <div class="dao-pointify-note">当前目标是你点击的那枚已镶嵌命格。它会先回到公共池中，然后从所选颜色池重抽一枚；命格颜色由命格池决定，不会被强制改写。</div>
+          <div class="dao-pointify-note">当前目标是你点击的那枚已镶嵌命格。它会先回到公共池中，然后从统一命格池按品质权重抽取一枚；抽取前不会提前显示结果。</div>
         `,
         choices: targetEntries.map((entry) => ({
           title: `${entry.def.name} [${getAlignmentLabel(getEntryAlignment(entry))}]`,
-          body: `当前目标 | 当前阵营 ${getAlignmentLabel(getEntryAlignment(entry))} | 操作：重抽并替换<br>结果预览：${describePointifyPreview(entry.id, color)}`,
-          onClick: () => openPointifyConfirmModal(entry.id, color),
+          body: `当前目标 | 当前阵营 ${getAlignmentLabel(getEntryAlignment(entry))} | 当前品质 ${getDestinyTierLabel(entry.def.tier)} | 操作：确认后重抽并替换`,
+          onClick: () => openPointifyConfirmModal(entry.id),
         })),
         className: "reincarnation-modal dao-pointify-modal",
         actions: [{
@@ -356,34 +363,30 @@
       });
     }
 
-    function openDaoPointifyResultModal({ color, previousId, previousDef, previousAlignment, nextId, nextDef, nextAlignment }) {
+    function openDaoPointifyResultModal({ previousId, previousDef, previousAlignment, nextId, nextDef, nextAlignment }) {
       const canContinuePointify = hasInfusionPoints() && getEquippedDestinyEntries().length > 0;
       const resultChanged = previousId !== nextId;
       const resultSummary = resultChanged
-        ? `${previousDef.name} 已从${color === "white" ? "白道" : "黑道"}命格池重抽为 ${nextDef.name}`
+        ? `${previousDef.name} 已从统一命格池重抽为 ${nextDef.name}`
         : `${previousDef.name} 在本次重抽中回到了自己`;
       state.paused = true;
       state.currentModal = "dao-pointify-result";
       renderModal({
         title: "点化结果",
-        body: `${color === "white" ? "白道" : "黑道"}点化完成，${resultSummary}。`,
+        body: `点化完成，${resultSummary}。`,
         bodyHtml: `
           <div class="reincarnation-summary dao-pointify-summary">
             <div class="summary-card">
               <div class="summary-label">重抽池子</div>
-              <div class="summary-value">${color === "white" ? "白道命格池" : "黑道命格池"}</div>
+              <div class="summary-value">统一命格池</div>
             </div>
             <div class="summary-card">
               <div class="summary-label">结果处理</div>
               <div class="summary-value">已替换</div>
             </div>
             <div class="summary-card">
-              <div class="summary-label">白点化点</div>
-              <div class="summary-value">${state.whiteInfusionPoints}</div>
-            </div>
-            <div class="summary-card">
-              <div class="summary-label">黑点化点</div>
-              <div class="summary-value">${state.blackInfusionPoints}</div>
+              <div class="summary-label">剩余机会</div>
+              <div class="summary-value">${getInfusionPointTotal()}</div>
             </div>
           </div>
           <div class="dao-pointify-result-grid">
@@ -407,7 +410,7 @@
         choices: canContinuePointify
           ? [{
             title: "继续点化",
-            body: "还有剩余点化点或可点化命格，继续处理下一枚当前命格。",
+            body: "还有剩余点化机会或可点化命格，继续处理下一枚当前命格。",
             onClick: () => openDaoPointifyModal(),
           }]
           : [],

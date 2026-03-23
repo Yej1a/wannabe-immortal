@@ -46,13 +46,13 @@ window.GAME_BALANCE = {
       tier1HealPct: 0.012,
       tier1HealCooldown: 0.25,
       tier2Duration: 8,
-      tier2BarrierPct: 0.18,
+      tier2BarrierPct: 0.12,
       tier2BarrierMin: 40,
       tier2BarrierMax: 160,
       tier2RefundThreshold: 0.7,
       tier2RefundValue: 8,
       fullPulseRadius: 110,
-      fullBarrierPct: 0.12,
+      fullBarrierPct: 0.10,
       fullBarrierMin: 30,
       fullBarrierMax: 120,
       fullDuration: 10,
@@ -96,6 +96,14 @@ window.GAME_BALANCE = {
     thunder: { baseCooldown: 14 },
     flame: { baseCooldown: 13 },
     guard: { baseCooldown: 10 },
+  },
+
+  destinyTable: {
+    tierWeights: {
+      common: 1,
+      true: 0.38,
+      fated: 0.12,
+    },
   },
 
   reincarnationTable: {
@@ -276,6 +284,12 @@ window.GAME_BALANCE = {
       shieldDamageMult: 0.42,
       pulseRecovery: 0.45,
       orbitSpeedMult: 0.56,
+      shotCooldown: 2.2,
+      projectileSpeed: 238,
+      projectileCount: 2,
+      spread: 0.18,
+      projectileRadius: 7,
+      minRangedDistance: 72,
     },
     2: {
       id: "ranged_elite",
@@ -311,6 +325,12 @@ window.GAME_BALANCE = {
       dashShockRadius: 78,
       dashShockDamageMult: 0.95,
       dashRecovery: 0.34,
+      shotCooldown: 1.55,
+      projectileSpeed: 288,
+      projectileCount: 2,
+      spread: 0.16,
+      projectileRadius: 8,
+      minRangedDistance: 48,
     },
   },
 

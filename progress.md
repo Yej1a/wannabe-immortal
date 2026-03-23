@@ -1212,3 +1212,30 @@ node --check modules/game-ui.js passed
 2026-03-23
 - Reduced base flame aura radius from 90 to 45.
 - Verification: node --check modules/game-data.js; Playwright file-url smoke for index.html.
+
+2026-03-24
+- Added ranged attacks to mini-bosses that previously only had close-range kits: stage 1 elite_guard and stage 3 charger_elite.
+- Added projectile params in miniBossTable and a shared mini-boss projectile helper in combat-update.
+- Verification: node --check balance.js; node --check modules/systems/combat-update.js; Playwright debug-spawn checks for stage 1 and 3 mini-boss ranged fire.
+
+2026-03-24
+- Reworked destiny draws to use one unified pool while keeping alignment tags on each destiny.
+- Added tier-based draw weights in `balance.js`: `common` > `true` > `fated`; both normal destiny offers and pointify now use the same weighted pool.
+- Reworked pointify:
+  - white/black full bars still each grant one pointify opportunity
+  - pointify no longer asks for white/black pool selection
+  - pointify now returns the chosen equipped destiny to the shared pool and rerolls from the same global pool
+  - mixed destinies can now appear from pointify if they are otherwise eligible
+  - pointify confirm no longer reveals candidate results before the roll; the outcome is shown only after confirm
+- Updated user-facing copy in `index.html`, `modules/inspect-system.js`, `modules/flow/run-flow.js`, and `modules/flow/destiny-flow.js`.
+- Updated `private_docs/GAME_DESIGN_DOC.md` to match the unified-pool and pointify-opportunity rules.
+- Verification:
+  - `node --check app.js`
+  - `node --check modules/destiny-helpers.js`
+  - `node --check modules/flow/destiny-flow.js`
+  - `node --check modules/flow/run-flow.js`
+  - `node --check modules/inspect-system.js`
+  - Playwright client smoke in `output/web-game/pointify-unified-smoke`
+  - targeted Playwright pointify flow in `output/web-game/pointify-unified-targeted`
+  - targeted confirm screenshot shows no pre-reveal: `output/web-game/pointify-unified-targeted/confirm.png`
+  - targeted result screenshot shows unified-pool reroll outcome: `output/web-game/pointify-unified-targeted/result.png`

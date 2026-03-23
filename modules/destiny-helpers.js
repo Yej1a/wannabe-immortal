@@ -5,6 +5,7 @@
     DESTINY_SLOT_CAP,
     DESTINY_POOL_VERSION,
     DESTINY_RUNTIME_RULES,
+    DESTINY_TIER_WEIGHTS,
     RESULT_DEATH,
     RESULT_CLEAR,
     HUMAN_ENDING_DESTINY_ID,
@@ -12,6 +13,7 @@
   } = global.GameData;
 
   const ALL_DESTINY_IDS = Object.keys(destinyCatalog);
+  const DESTINY_TIER_ORDER = ["common", "true", "fated"];
   const SKILL_REWRITE_DESTINY_TO_SKILL = Object.fromEntries(
     Object.values(DESTINY_RUNTIME_RULES.skillRewriteBindings || {}).map((binding) => [binding.destinyId, binding.skillId]),
   );
@@ -145,15 +147,16 @@
     return "成人（Be Human）";
   }
 
-  function getDestinyWeight(alignment, state, metaState) {
-    let weight = alignment === "mixed" ? 0.92 : 1;
-    const counts = getAlignmentCounts(metaState);
-    if (alignment === "white" && counts.white > counts.black) weight *= 1.2;
-    if (alignment === "black" && counts.black > counts.white) weight *= 1.2;
-    if (alignment === "mixed" && counts.white > 0 && counts.black > 0) weight *= 1.25;
-    if (alignment === "white" && (state?.whiteInfusionPoints || 0) > (state?.blackInfusionPoints || 0)) weight *= 1.08;
-    if (alignment === "black" && (state?.blackInfusionPoints || 0) > (state?.whiteInfusionPoints || 0)) weight *= 1.08;
-    return weight;
+  function getDestinyTierLabel(tier) {
+    if (tier === "common") return "凡命";
+    if (tier === "true") return "真传";
+    if (tier === "fated") return "天命";
+    return "未知";
+  }
+
+  function getDestinyWeight(idOrTier) {
+    const tier = destinyCatalog[idOrTier]?.tier || idOrTier;
+    return DESTINY_TIER_WEIGHTS[tier] || 1;
   }
 
   function weightedPick(items) {
@@ -173,20 +176,22 @@
     return unlockedIds.filter((id) => !metaState.destiny.owned[id]);
   }
 
+  function isDestinyOfferEligible(id, state) {
+    const def = destinyCatalog[id];
+    if (!def) return false;
+    if (def.category !== "skill-rewrite") return true;
+    const skillId = SKILL_REWRITE_DESTINY_TO_SKILL[id];
+    return !!skillId && !!state?.player?.skills?.[skillId];
+  }
+
   function getRandomDestinyOffers(metaState, state, count = 3) {
-    const pool = getMissingDestinyIds(metaState).filter((id) => {
-      const def = destinyCatalog[id];
-      if (!def) return false;
-      if (def.category !== "skill-rewrite") return true;
-      const skillId = SKILL_REWRITE_DESTINY_TO_SKILL[id];
-      return !!skillId && !!state?.player?.skills?.[skillId];
-    });
+    const pool = getMissingDestinyIds(metaState).filter((id) => isDestinyOfferEligible(id, state));
     const offers = [];
     while (pool.length > 0 && offers.length < count) {
       const id = weightedPick(
         pool.map((destinyId) => ({
           value: destinyId,
-          weight: getDestinyWeight(destinyCatalog[destinyId].alignment, state, metaState),
+          weight: getDestinyWeight(destinyId),
         })),
       );
       pool.splice(pool.indexOf(id), 1);
@@ -293,24 +298,29 @@
     return deltas.length ? `预览：${deltas.join(" | ")}` : "预览：规则效果型命格，基础属性无变化";
   }
 
-  function getPointifyPreviewRows(metaState, targetId, color) {
+  function getPointifyPreviewRows(metaState, targetId, _color = null, state = null) {
     const poolIds = Object.keys(destinyCatalog).filter((id) => {
-      const def = destinyCatalog[id];
-      if (!def || def.alignment !== color) return false;
+      if (!destinyCatalog[id]) return false;
+      if (state && !isDestinyOfferEligible(id, state)) return false;
       return id === targetId || !metaState.destiny.owned[id];
     });
     const rerollIds = poolIds.filter((id) => id !== targetId);
     const candidateIds = rerollIds.length ? rerollIds : poolIds;
-    return [{
-      alignment: color,
-      chance: 100,
-      names: candidateIds.map((id) => destinyCatalog[id].name),
-    }];
+    const totalWeight = candidateIds.reduce((sum, id) => sum + getDestinyWeight(id), 0);
+    return DESTINY_TIER_ORDER.map((tier) => {
+      const ids = candidateIds.filter((id) => destinyCatalog[id].tier === tier);
+      const tierWeight = ids.reduce((sum, id) => sum + getDestinyWeight(id), 0);
+      return {
+        tier,
+        chance: totalWeight > 0 ? (tierWeight / totalWeight) * 100 : 0,
+        count: ids.length,
+      };
+    }).filter((row) => row.count > 0);
   }
 
-  function describePointifyPreview(metaState, targetId, color) {
-    return getPointifyPreviewRows(metaState, targetId, color)
-      .map((row) => `${getAlignmentLabel(row.alignment)} ${row.chance.toFixed(1)}% -> ${row.names.join(" / ")}`)
+  function describePointifyPreview(metaState, targetId, color, state = null) {
+    return getPointifyPreviewRows(metaState, targetId, color, state)
+      .map((row) => `${getDestinyTierLabel(row.tier)} ${row.chance.toFixed(1)}% (${row.count} 种)`)
       .join(" | ");
   }
 
@@ -332,9 +342,11 @@
     getUnequippedOwnedDestinyEntries,
     getAlignmentCounts,
     getAlignmentResult,
+    getDestinyTierLabel,
     getDestinyWeight,
     weightedPick,
     getMissingDestinyIds,
+    isDestinyOfferEligible,
     getRandomDestinyOffers,
     describeDestiny,
     getAlignmentLabel,
