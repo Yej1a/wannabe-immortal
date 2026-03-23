@@ -78,6 +78,24 @@ Original prompt: ?????????????????????????3 ???????????????????????10 ??????????
 - Upgraded the reincarnation screen from a generic modal into a dedicated settlement UI
 - Added summary cards for:
   - result
+
+2026-03-24 right panel layout pass
+
+- Reworked the former right-side single stack into a two-part layout via CSS only.
+- Current structure:
+  - left sub-column: white/black slots on top, inspect details below
+  - right sub-column: white/black slot explanation panel spanning the full column height
+- Kept `index.html` structure intact and moved the composition into `styles.css` to avoid touching the existing encoded text block.
+- Verification:
+  - Playwright screenshot captured at `output/web-game/right-panel-layout-check/layout-full-2.png`
+
+2026-03-24 main play area enlarge pass
+
+- Increased desktop shell max width and reduced outer padding to free more space for the center stage.
+- Narrowed left HUD and right-side composite panel widths and reduced column gaps.
+- Reduced `center-stage` container padding so the canvas occupies more of the available panel area.
+- Verification:
+  - Playwright screenshot captured at `output/web-game/layout-after-enlarge.png`
   - gained reincarnation points
 - current point total
 - kills
@@ -1239,3 +1257,29 @@ node --check modules/game-ui.js passed
   - targeted Playwright pointify flow in `output/web-game/pointify-unified-targeted`
   - targeted confirm screenshot shows no pre-reveal: `output/web-game/pointify-unified-targeted/confirm.png`
   - targeted result screenshot shows unified-pool reroll outcome: `output/web-game/pointify-unified-targeted/result.png`
+
+2026-03-24
+- Added a telegraphed teleport skill to the stage-2 mini-boss `ranged_elite`.
+- New behavior:
+  - after a cooldown, the boss marks a destination around the player with a visible target ring and guide line
+  - after the telegraph window, it blinks to that marked spot, then resumes ranged pressure
+- Tuned in `balance.js` with dedicated teleport cooldown, warning duration, destination distance, trigger range, and recovery.
+- Extended `render_game_to_text` enemy payload to expose mini-boss state and current teleport target for targeted verification.
+- Verification:
+  - `node --check balance.js`
+  - `node --check modules/systems/combat-update.js`
+  - `node --check modules/render/game-renderer.js`
+  - `node --check modules/game-ui.js`
+  - Playwright client smoke in `output/web-game/ranged-elite-teleport-smoke`
+  - targeted Playwright telegraph capture in `output/web-game/ranged-elite-teleport-targeted/telegraph.png`
+  - targeted Playwright post-teleport capture in `output/web-game/ranged-elite-teleport-targeted/post-teleport.png`
+
+2026-03-24
+- Swarm-route sword active projectiles now disappear on first hit instead of using pierce logic.
+- Fix targets the repeated same-target hit behavior on small bosses.
+- Verification: node --check modules/systems/combat-update.js; Playwright debug route-active repro for sword swarm.
+
+2026-03-24
+- Moved the hint/inspect area into a stacked right-side column below the white/black path panel without merging the two panels.
+- Updated desktop layout from four columns to three columns plus a stacked side container.
+- Verification: Playwright file-url smoke screenshot for updated right-side layout.

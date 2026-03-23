@@ -132,6 +132,46 @@
       });
     }
 
+    function getMiniBossTeleportTarget(enemy, profile) {
+      const baseAngle = Math.atan2(enemy.y - state.player.y, enemy.x - state.player.x);
+      const angleOffset = profile.teleportAngleOffset || 0.92;
+      const sideSeed = Math.floor((state.time + enemy.radius) * 2.2) % 2 === 0 ? 1 : -1;
+      const targetAngle = baseAngle + sideSeed * angleOffset;
+      const targetDistance = profile.teleportDistance || 112;
+      const target = clampArenaPoint(
+        state.player.x + Math.cos(targetAngle) * targetDistance,
+        state.player.y + Math.sin(targetAngle) * targetDistance,
+        enemy.radius + 18,
+      );
+      const minRange = profile.teleportMinRange || 88;
+      const targetDist = distance(target, state.player);
+      if (targetDist >= minRange) return target;
+      const scaled = clampArenaPoint(
+        state.player.x + Math.cos(targetAngle) * minRange,
+        state.player.y + Math.sin(targetAngle) * minRange,
+        enemy.radius + 18,
+      );
+      return scaled;
+    }
+
+    function beginRangedEliteTeleport(enemy, profile) {
+      const target = getMiniBossTeleportTarget(enemy, profile);
+      if (!target) return false;
+      const duration = profile.teleportTelegraph || 0.82;
+      enemy.miniBossState = "teleport-windup";
+      enemy.miniBossStateTimer = duration;
+      enemy.miniBossTeleportTimer = profile.teleportCooldown || 5.2;
+      enemy.miniBossTeleportTarget = target;
+      enemy.miniBossTeleportMarkerUntil = state.time + duration;
+      enemy.miniBossTeleportMarkerDuration = duration;
+      enemy.miniBossTeleportRadius = enemy.radius + 20;
+      enemy.miniBossTelegraphDuration = duration;
+      enemy.miniBossShieldUntil = state.time + duration;
+      enemy.attackTimer = Math.max(enemy.attackTimer, duration);
+      pushMiniBossVisual(enemy, enemy.radius + 24);
+      return true;
+    }
+
     function spawnEnemyProjectile(enemy, angle, speed, radius, damageMult = 1) {
       state.enemyProjectiles.push({
         kind: enemy.isMiniBoss ? "mini-boss-shot" : "enemy-shot",
@@ -194,6 +234,13 @@
           projectileCount: 3,
           spread: 0.2,
           strafeSpeedMult: 0.34,
+          teleportCooldown: 5.2,
+          teleportTelegraph: 0.82,
+          teleportDistance: 112,
+          teleportAngleOffset: 0.92,
+          teleportTriggerRange: 260,
+          teleportMinRange: 88,
+          teleportRecovery: 0.35,
           meleeCooldown: template.meleeCooldown || 0.72,
         };
       }
@@ -230,10 +277,46 @@
       const meleeCooldown = profile.meleeCooldown || template.meleeCooldown || 0.72;
 
       if (profile.behavior === "ranged_elite") {
+        enemy.miniBossState = enemy.miniBossState || "idle";
         enemy.shotTimer = (enemy.shotTimer ?? profile.shotCooldown) - dt;
+        enemy.miniBossTeleportTimer = (enemy.miniBossTeleportTimer ?? ((profile.teleportCooldown || 5.2) * 0.65)) - dt;
         const preferredRange = profile.preferredRange || 220;
         const retreatRange = profile.retreatRange || preferredRange * 0.7;
         const moveSpeed = enemy.speed * speedMult;
+        if (enemy.miniBossState === "teleport-windup") {
+          enemy.miniBossStateTimer = Math.max(0, (enemy.miniBossStateTimer || 0) - dt);
+          if (enemy.miniBossStateTimer <= 0 && enemy.miniBossTeleportTarget) {
+            pushMiniBossVisual(enemy, enemy.radius + 20);
+            enemy.x = enemy.miniBossTeleportTarget.x;
+            enemy.y = enemy.miniBossTeleportTarget.y;
+            pushMiniBossVisual(enemy, enemy.radius + 28);
+            enemy.miniBossState = "teleport-recover";
+            enemy.miniBossStateTimer = profile.teleportRecovery || 0.35;
+            enemy.miniBossTeleportMarkerUntil = 0;
+            enemy.miniBossShieldUntil = 0;
+            enemy.shotTimer = Math.min(enemy.shotTimer, Math.max(0.28, (profile.shotCooldown || 1.48) * 0.35));
+          }
+          const clamped = clampArenaPoint(enemy.x, enemy.y, enemy.radius + 12);
+          enemy.x = clamped.x;
+          enemy.y = clamped.y;
+          return;
+        }
+        if (enemy.miniBossState === "teleport-recover") {
+          enemy.miniBossStateTimer = Math.max(0, (enemy.miniBossStateTimer || 0) - dt);
+          const tangentX = -dy / dist;
+          const tangentY = dx / dist;
+          enemy.x += tangentX * moveSpeed * 0.3 * dt;
+          enemy.y += tangentY * moveSpeed * 0.3 * dt;
+          if (enemy.miniBossStateTimer <= 0) {
+            enemy.miniBossState = "idle";
+            enemy.miniBossTeleportTarget = null;
+          }
+          const clamped = clampArenaPoint(enemy.x, enemy.y, enemy.radius + 12);
+          enemy.x = clamped.x;
+          enemy.y = clamped.y;
+          applyEnemyContactHit(enemy, meleeCooldown);
+          return;
+        }
         if (dist > preferredRange + 14) {
           enemy.x += (dx / dist) * moveSpeed * dt;
           enemy.y += (dy / dist) * moveSpeed * dt;
@@ -257,6 +340,9 @@
           }
           enemy.shotTimer = profile.shotCooldown || 1.65;
           pushMiniBossVisual(enemy, enemy.radius + 18);
+        }
+        if (enemy.miniBossTeleportTimer <= 0 && dist <= (profile.teleportTriggerRange || 260)) {
+          if (beginRangedEliteTeleport(enemy, profile)) return;
         }
         const clamped = clampArenaPoint(enemy.x, enemy.y, enemy.radius + 12);
         enemy.x = clamped.x;
@@ -920,16 +1006,20 @@
         state.enemies.forEach((enemy) => {
           if (!alive) return;
           if (distance(projectile, enemy) < projectile.radius + enemy.radius) {
+            const vanishOnHit = projectile.kind === "sword-active" && projectile.routeStyle === "swarm";
             spawnProjectileImpact(projectile, enemy);
             dealDamage(enemy, projectile.damage, projectile.kind);
-            if (projectile.pierce > 0) projectile.pierce -= 1;
+            if (vanishOnHit) alive = false;
+            else if (projectile.pierce > 0) projectile.pierce -= 1;
             else alive = false;
           }
         });
         if (alive && state.boss && distance(projectile, state.boss) < projectile.radius + state.boss.radius) {
+          const vanishOnHit = projectile.kind === "sword-active" && projectile.routeStyle === "swarm";
           spawnProjectileImpact(projectile, state.boss);
           dealDamage(state.boss, projectile.damage, projectile.kind);
-          if (projectile.pierce > 0) projectile.pierce -= 1;
+          if (vanishOnHit) alive = false;
+          else if (projectile.pierce > 0) projectile.pierce -= 1;
           else alive = false;
         }
         return alive;

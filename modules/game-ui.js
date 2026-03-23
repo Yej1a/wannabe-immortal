@@ -434,6 +434,15 @@
         y: Math.round(enemy.y),
         hp: Math.round(enemy.hp),
         color: enemy.color,
+        is_mini_boss: !!enemy.isMiniBoss,
+        mini_boss_kind: enemy.miniBossKind || null,
+        mini_boss_state: enemy.miniBossState || null,
+        teleport_target: enemy.miniBossTeleportTarget
+          ? {
+            x: Math.round(enemy.miniBossTeleportTarget.x),
+            y: Math.round(enemy.miniBossTeleportTarget.y),
+          }
+          : null,
       })),
       boss: state.boss ? {
         id: state.boss.bossId || null,

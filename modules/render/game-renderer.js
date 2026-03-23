@@ -1083,6 +1083,9 @@
       const telegraphUntil = enemy.miniBossTelegraphUntil || 0;
       const shieldUntil = enemy.miniBossShieldUntil || 0;
       const pulseRadius = enemy.miniBossPulseRadius || (enemy.radius + 48);
+      const teleportUntil = enemy.miniBossTeleportMarkerUntil || 0;
+      const teleportTarget = enemy.miniBossTeleportTarget || null;
+      const teleportRadius = enemy.miniBossTeleportRadius || (enemy.radius + 18);
       if (telegraphUntil > state.time) {
         const remaining = Math.max(0, telegraphUntil - state.time);
         const duration = Math.max(0.01, enemy.miniBossTelegraphDuration || 0.78);
@@ -1111,6 +1114,46 @@
           ctx.beginPath();
           ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
           ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+      if (teleportUntil > state.time && teleportTarget) {
+        const remaining = Math.max(0, teleportUntil - state.time);
+        const duration = Math.max(0.01, enemy.miniBossTeleportMarkerDuration || 0.82);
+        const ratio = clamp(remaining / duration, 0, 1);
+        ctx.save();
+        ctx.strokeStyle = `rgba(150, 232, 255, ${0.22 + (1 - ratio) * 0.22})`;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 7]);
+        ctx.beginPath();
+        ctx.moveTo(enemy.x, enemy.y);
+        ctx.lineTo(teleportTarget.x, teleportTarget.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+
+        ctx.save();
+        ctx.translate(teleportTarget.x, teleportTarget.y);
+        const ringRadius = teleportRadius * (0.94 + (1 - ratio) * 0.08);
+        ctx.fillStyle = `rgba(98, 198, 255, ${0.06 + (1 - ratio) * 0.1})`;
+        ctx.beginPath();
+        ctx.arc(0, 0, ringRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = `rgba(184, 241, 255, ${0.52 + (1 - ratio) * 0.24})`;
+        ctx.lineWidth = 3;
+        ctx.setLineDash([9, 7]);
+        ctx.beginPath();
+        ctx.arc(0, 0, ringRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        for (let i = 0; i < 4; i += 1) {
+          const angle = (Math.PI * 2 * i) / 4 + state.time * 0.4;
+          ctx.strokeStyle = `rgba(225, 250, 255, ${0.4 + (1 - ratio) * 0.18})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(angle) * (ringRadius - 14), Math.sin(angle) * (ringRadius - 14));
+          ctx.lineTo(Math.cos(angle) * (ringRadius + 14), Math.sin(angle) * (ringRadius + 14));
           ctx.stroke();
         }
         ctx.restore();
