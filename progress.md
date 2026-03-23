@@ -96,6 +96,13 @@ Original prompt: ?????????????????????????3 ???????????????????????10 ??????????
 - Reduced `center-stage` container padding so the canvas occupies more of the available panel area.
 - Verification:
   - Playwright screenshot captured at `output/web-game/layout-after-enlarge.png`
+
+2026-03-24 main play area enlarge pass 2
+
+- Further narrowed the left HUD and the two right-side sub-columns.
+- Reduced layout gaps and panel inner spacing again so the center battle canvas gets more horizontal area.
+- Verification:
+  - Playwright screenshot captured at `output/web-game/layout-after-enlarge-2.png`
   - gained reincarnation points
 - current point total
 - kills
