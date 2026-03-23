@@ -133,13 +133,18 @@ body {
 .fill {
   height: 100%;
   width: 0;
-  transition: width 120ms linear;
 }
 
 .fill.life { background: linear-gradient(90deg, #8c2222, var(--life)); }
 .fill.xp { background: linear-gradient(90deg, #1a6bb8, var(--xp)); }
 .fill.white { background: linear-gradient(90deg, #bfc2bc, var(--white-path)); }
 .fill.black { background: linear-gradient(90deg, #1d1628, #5d4a7a); }
+
+.fill.xp,
+.fill.white,
+.fill.black {
+  transition: width 120ms linear;
+}
 
 .path-block .label-row {
   align-items: center;

@@ -244,6 +244,136 @@
       ctx.restore();
     }
 
+    function drawGreatswordBlade(ctx, {
+      x,
+      y,
+      angle = 0,
+      length,
+      width,
+      primary,
+      secondary,
+      accent,
+      alpha = 1,
+      glowStrength = 1,
+      capstone = false,
+    }) {
+      const safeLength = Math.max(24, length);
+      const safeWidth = Math.max(12, width);
+      const halfWidth = safeWidth * 0.5;
+      const bodyLength = safeLength * 0.86;
+      const tipLength = safeLength - bodyLength;
+      const innerHalfWidth = halfWidth * 0.76;
+      const ridgeHalfWidth = halfWidth * 0.28;
+      const outerGlowWidth = safeWidth * (1.34 + glowStrength * 0.22);
+      const innerGlowWidth = safeWidth * (1.02 + glowStrength * 0.16);
+
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+
+      ctx.strokeStyle = withAlpha(primary, (0.05 + alpha * 0.09) * glowStrength, "255, 222, 138");
+      ctx.lineWidth = outerGlowWidth;
+      ctx.beginPath();
+      ctx.moveTo(safeLength * 0.06, 0);
+      ctx.lineTo(bodyLength + tipLength * 0.55, 0);
+      ctx.stroke();
+
+      ctx.strokeStyle = withAlpha(accent, (0.14 + alpha * 0.14) * glowStrength, "255, 244, 214");
+      ctx.lineWidth = innerGlowWidth;
+      ctx.beginPath();
+      ctx.moveTo(safeLength * 0.12, 0);
+      ctx.lineTo(bodyLength, 0);
+      ctx.stroke();
+
+      const outerFill = ctx.createLinearGradient(0, 0, safeLength, 0);
+      outerFill.addColorStop(0, withAlpha(secondary, 0.86 * alpha, "142, 97, 48"));
+      outerFill.addColorStop(0.3, withAlpha(primary, 0.94 * alpha, "240, 201, 124"));
+      outerFill.addColorStop(0.58, withAlpha(accent, 0.98 * alpha, "255, 241, 202"));
+      outerFill.addColorStop(0.84, withAlpha(primary, 0.9 * alpha, "240, 201, 124"));
+      outerFill.addColorStop(1, withAlpha(secondary, 0.88 * alpha, "142, 97, 48"));
+
+      ctx.fillStyle = outerFill;
+      ctx.beginPath();
+      ctx.moveTo(0, -halfWidth);
+      ctx.lineTo(bodyLength, -halfWidth * 0.94);
+      ctx.lineTo(safeLength, 0);
+      ctx.lineTo(bodyLength, halfWidth * 0.94);
+      ctx.lineTo(0, halfWidth);
+      ctx.lineTo(-safeWidth * 0.12, halfWidth * 0.28);
+      ctx.lineTo(-safeWidth * 0.12, -halfWidth * 0.28);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = withAlpha(secondary, 0.74 * alpha, "142, 97, 48");
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.moveTo(0, -halfWidth);
+      ctx.lineTo(bodyLength, -halfWidth * 0.94);
+      ctx.lineTo(safeLength, 0);
+      ctx.lineTo(bodyLength, halfWidth * 0.94);
+      ctx.lineTo(0, halfWidth);
+      ctx.lineTo(-safeWidth * 0.12, halfWidth * 0.28);
+      ctx.lineTo(-safeWidth * 0.12, -halfWidth * 0.28);
+      ctx.closePath();
+      ctx.stroke();
+
+      const innerFill = ctx.createLinearGradient(0, 0, safeLength, 0);
+      innerFill.addColorStop(0, withAlpha(primary, 0.26 * alpha, "240, 201, 124"));
+      innerFill.addColorStop(0.42, withAlpha(accent, 0.64 * alpha, "255, 241, 202"));
+      innerFill.addColorStop(0.72, withAlpha(primary, 0.38 * alpha, "240, 201, 124"));
+      innerFill.addColorStop(1, withAlpha(primary, 0.18 * alpha, "240, 201, 124"));
+      ctx.fillStyle = innerFill;
+      ctx.beginPath();
+      ctx.moveTo(safeLength * 0.04, -innerHalfWidth);
+      ctx.lineTo(bodyLength - safeWidth * 0.1, -innerHalfWidth);
+      ctx.lineTo(safeLength - tipLength * 0.62, 0);
+      ctx.lineTo(bodyLength - safeWidth * 0.1, innerHalfWidth);
+      ctx.lineTo(safeLength * 0.04, innerHalfWidth);
+      ctx.lineTo(0, innerHalfWidth * 0.42);
+      ctx.lineTo(0, -innerHalfWidth * 0.42);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = withAlpha(accent, 0.62 * alpha, "255, 241, 202");
+      ctx.beginPath();
+      ctx.moveTo(safeLength * 0.1, -ridgeHalfWidth);
+      ctx.lineTo(bodyLength - safeWidth * 0.2, -ridgeHalfWidth);
+      ctx.lineTo(safeLength - tipLength * 0.94, 0);
+      ctx.lineTo(bodyLength - safeWidth * 0.2, ridgeHalfWidth);
+      ctx.lineTo(safeLength * 0.1, ridgeHalfWidth);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = withAlpha(accent, 0.24 * alpha, "255, 241, 202");
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(safeLength * 0.06, 0);
+      ctx.lineTo(safeLength - tipLength * 0.24, 0);
+      ctx.stroke();
+
+      ctx.strokeStyle = withAlpha(primary, 0.24 * alpha, "240, 201, 124");
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(safeLength * 0.06, -halfWidth * 0.62);
+      ctx.lineTo(bodyLength - safeWidth * 0.16, -halfWidth * 0.58);
+      ctx.moveTo(safeLength * 0.06, halfWidth * 0.62);
+      ctx.lineTo(bodyLength - safeWidth * 0.16, halfWidth * 0.58);
+      ctx.stroke();
+
+      if (capstone) {
+        ctx.strokeStyle = withAlpha(accent, 0.3 * alpha, "255, 241, 202");
+        ctx.lineWidth = safeWidth * 0.18;
+        ctx.beginPath();
+        ctx.moveTo(safeLength * 0.14, 0);
+        ctx.lineTo(bodyLength - safeWidth * 0.22, 0);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
     function drawGreatswordField(ctx, effect) {
       const palette = effect.palette || {};
       const primary = palette.primary || "#ffde8a";
@@ -252,65 +382,22 @@
       const dx = effect.endX - effect.startX;
       const dy = effect.endY - effect.startY;
       const length = Math.max(1, Math.hypot(dx, dy));
-      const nx = -dy / length;
-      const ny = dx / length;
-      const halfWidth = effect.width * (0.72 + Math.sin(effect.oscillation) * 0.06);
       const alpha = clamp(effect.time / Math.max(0.01, effect.duration), 0, 1);
-      const start = { x: effect.startX, y: effect.startY };
-      const end = { x: effect.endX, y: effect.endY };
-      const tip = {
-        x: end.x + (dx / length) * 28,
-        y: end.y + (dy / length) * 28,
-      };
+      const bladeWidth = effect.width * (1.78 + Math.sin(effect.oscillation) * 0.08);
 
-      ctx.save();
-      const core = ctx.createLinearGradient(start.x, start.y, tip.x, tip.y);
-      core.addColorStop(0, withAlpha(primary, 0.08 + alpha * 0.18, "250, 232, 182"));
-      core.addColorStop(0.45, withAlpha(accent, 0.18 + alpha * 0.28, "255, 244, 214"));
-      core.addColorStop(1, withAlpha(primary, 0.14 + alpha * 0.28, "255, 222, 138"));
-      ctx.fillStyle = core;
-      ctx.beginPath();
-      ctx.moveTo(start.x + nx * halfWidth, start.y + ny * halfWidth);
-      ctx.lineTo(end.x + nx * (halfWidth * 0.8), end.y + ny * (halfWidth * 0.8));
-      ctx.lineTo(tip.x, tip.y);
-      ctx.lineTo(end.x - nx * (halfWidth * 0.8), end.y - ny * (halfWidth * 0.8));
-      ctx.lineTo(start.x - nx * halfWidth, start.y - ny * halfWidth);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.strokeStyle = `rgba(255, 244, 214, ${0.45 + alpha * 0.32})`;
-      ctx.lineWidth = 2.4;
-      ctx.beginPath();
-      ctx.moveTo(start.x + nx * halfWidth, start.y + ny * halfWidth);
-      ctx.lineTo(end.x + nx * (halfWidth * 0.7), end.y + ny * (halfWidth * 0.7));
-      ctx.lineTo(tip.x, tip.y);
-      ctx.lineTo(end.x - nx * (halfWidth * 0.7), end.y - ny * (halfWidth * 0.7));
-      ctx.lineTo(start.x - nx * halfWidth, start.y - ny * halfWidth);
-      ctx.closePath();
-      ctx.stroke();
-
-      ctx.strokeStyle = withAlpha(secondary, 0.34 + alpha * 0.2, "150, 111, 54");
-      ctx.lineWidth = 3.4;
-      ctx.beginPath();
-      ctx.moveTo(start.x, start.y);
-      ctx.lineTo(end.x, end.y);
-      ctx.stroke();
-
-      ctx.strokeStyle = withAlpha(primary, 0.18 + alpha * 0.16, "255, 220, 132");
-      ctx.lineWidth = effect.width * 1.85;
-      ctx.beginPath();
-      ctx.moveTo(start.x, start.y);
-      ctx.lineTo(end.x, end.y);
-      ctx.stroke();
-      if (effect.capstone) {
-        ctx.strokeStyle = withAlpha(accent, 0.3 + alpha * 0.18, "255, 244, 214");
-        ctx.lineWidth = effect.width * 0.42;
-        ctx.beginPath();
-        ctx.moveTo(start.x + nx * halfWidth * 0.18, start.y + ny * halfWidth * 0.18);
-        ctx.lineTo(end.x + nx * halfWidth * 0.12, end.y + ny * halfWidth * 0.12);
-        ctx.stroke();
-      }
-      ctx.restore();
+      drawGreatswordBlade(ctx, {
+        x: effect.startX,
+        y: effect.startY,
+        angle: effect.angle,
+        length,
+        width: bladeWidth,
+        primary,
+        secondary,
+        accent,
+        alpha: 0.88 + alpha * 0.12,
+        glowStrength: 1.1 + (effect.capstone ? 0.18 : 0),
+        capstone: effect.capstone,
+      });
     }
 
     function drawFlameZoneEffect(ctx, effect) {
@@ -629,17 +716,19 @@
       ctx.strokeStyle = stroke;
       ctx.lineWidth = 1.1;
       ctx.beginPath();
-      ctx.moveTo(8, 0);
-      ctx.lineTo(-3, -2.6);
-      ctx.lineTo(-5, 0);
-      ctx.lineTo(-3, 2.6);
+      ctx.moveTo(10, 0);
+      ctx.lineTo(-2.1, -2.5);
+      ctx.lineTo(-4.2, 0);
+      ctx.lineTo(-2.1, 2.5);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
+      ctx.fillStyle = stroke;
+      ctx.fillRect(-3.2, -2.2, 1.2, 4.4);
       ctx.fillStyle = "#fff7cf";
-      ctx.fillRect(-7, -1.2, 5, 2.4);
+      ctx.fillRect(-5.7, -1.1, 3.1, 2.2);
       ctx.fillStyle = "#d0b46c";
-      ctx.fillRect(-9, -0.9, 2, 1.8);
+      ctx.fillRect(-7.1, -0.8, 1.4, 1.6);
       ctx.restore();
     }
 
@@ -922,10 +1011,38 @@
       drawSwordOrbitHints(ctx);
       drawFlameAura(ctx);
       drawGuardAura(ctx);
+      const invulnActive = state.player.invulnTimer > 0;
+      const invulnPulse = invulnActive
+        ? 0.35 + (Math.sin(state.time * 42) * 0.5 + 0.5) * 0.55
+        : 1;
+      ctx.fillStyle = "rgba(255,255,255,0.18)";
+      ctx.fillRect(state.player.x - 17, state.player.y - state.player.radius - 12, 34, 4);
+      ctx.fillStyle = "#d65b5b";
+      ctx.fillRect(
+        state.player.x - 17,
+        state.player.y - state.player.radius - 12,
+        34 * clamp(state.player.hp / Math.max(1, state.player.maxHp), 0, 1),
+        4,
+      );
+      if (invulnActive) {
+        ctx.save();
+        ctx.translate(state.player.x, state.player.y);
+        ctx.strokeStyle = `rgba(255, 244, 196, ${0.24 + invulnPulse * 0.42})`;
+        ctx.lineWidth = 2.4;
+        ctx.setLineDash([6, 5]);
+        ctx.beginPath();
+        ctx.arc(0, 0, state.player.radius + 6 + Math.sin(state.time * 18) * 1.5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+      ctx.save();
+      ctx.globalAlpha = invulnPulse;
       ctx.fillStyle = COLORS.player;
       ctx.beginPath();
       ctx.arc(state.player.x, state.player.y, state.player.radius, 0, Math.PI * 2);
       ctx.fill();
+      ctx.restore();
     }
 
     function getExecuteThreshold(target) {
@@ -961,8 +1078,65 @@
       ctx.restore();
     }
 
+    function drawMiniBossTelegraph(ctx, enemy) {
+      if (!enemy.isMiniBoss) return;
+      const telegraphUntil = enemy.miniBossTelegraphUntil || 0;
+      const shieldUntil = enemy.miniBossShieldUntil || 0;
+      const pulseRadius = enemy.miniBossPulseRadius || (enemy.radius + 48);
+      if (telegraphUntil > state.time) {
+        const remaining = Math.max(0, telegraphUntil - state.time);
+        const duration = Math.max(0.01, enemy.miniBossTelegraphDuration || 0.78);
+        const ratio = clamp(remaining / duration, 0, 1);
+        ctx.save();
+        ctx.translate(enemy.x, enemy.y);
+        const ringRadius = enemy.radius + (pulseRadius - enemy.radius) * (1 - ratio * 0.08);
+        ctx.fillStyle = `rgba(255, 196, 96, ${0.06 + (1 - ratio) * 0.08})`;
+        ctx.beginPath();
+        ctx.arc(0, 0, ringRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = `rgba(255, 222, 136, ${0.44 + (1 - ratio) * 0.28})`;
+        ctx.lineWidth = 3;
+        ctx.setLineDash([10, 8]);
+        ctx.beginPath();
+        ctx.arc(0, 0, ringRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        const glyphCount = 6;
+        for (let i = 0; i < glyphCount; i += 1) {
+          const angle = (Math.PI * 2 * i) / glyphCount + state.time * 0.8;
+          const inner = ringRadius - 10;
+          const outer = ringRadius + 10;
+          ctx.strokeStyle = `rgba(255, 238, 188, ${0.38 + (1 - ratio) * 0.22})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+          ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+      if (shieldUntil > state.time) {
+        const ratio = clamp((shieldUntil - state.time) / Math.max(0.01, (enemy.miniBossTelegraphDuration || 0.78)), 0, 1);
+        ctx.save();
+        ctx.translate(enemy.x, enemy.y);
+        const shieldRadius = enemy.radius + 12 + Math.sin(state.time * 7) * 1.6;
+        ctx.strokeStyle = `rgba(132, 204, 255, ${0.55 + (1 - ratio) * 0.18})`;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(0, 0, shieldRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = `rgba(220, 244, 255, ${0.38 + (1 - ratio) * 0.16})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, shieldRadius + 6, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
     function drawEnemies(ctx) {
       state.enemies.forEach((enemy) => {
+        drawMiniBossTelegraph(ctx, enemy);
         ctx.fillStyle = enemy.color === "white" ? COLORS.enemyWhite : COLORS.enemyBlack;
         ctx.beginPath();
         ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
@@ -972,7 +1146,12 @@
         ctx.fillStyle = "rgba(255,255,255,0.15)";
         ctx.fillRect(enemy.x - enemy.radius, enemy.y - enemy.radius - 10, enemy.radius * 2, 4);
         ctx.fillStyle = "#89d3b4";
-        ctx.fillRect(enemy.x - enemy.radius, enemy.y - enemy.radius - 10, (enemy.hp / enemy.maxHp) * enemy.radius * 2, 4);
+        ctx.fillRect(
+          enemy.x - enemy.radius,
+          enemy.y - enemy.radius - 10,
+          clamp(enemy.hp / Math.max(1, enemy.maxHp), 0, 1) * enemy.radius * 2,
+          4,
+        );
       });
     }
 
@@ -1028,19 +1207,53 @@
       ctx.save();
       ctx.translate(projectile.x, projectile.y);
       ctx.rotate(angle);
-      ctx.strokeStyle = withAlpha(trailColor, isActive ? 0.72 : isChain ? 0.46 : 0.34, "239, 226, 163");
-      ctx.lineWidth = trailWidth;
-      ctx.lineCap = "round";
+      const trailGap = isActive ? 8 : isChain ? 7 : 6;
+      const trailEnd = -trailGap;
+      const trailStart = -trailLength - trailGap;
+      const glowGradient = ctx.createLinearGradient(trailStart, 0, trailEnd, 0);
+      glowGradient.addColorStop(0, withAlpha(trailColor, 0, "239, 226, 163"));
+      glowGradient.addColorStop(0.35, withAlpha(trailColor, isActive ? 0.08 : isChain ? 0.05 : 0.04, "239, 226, 163"));
+      glowGradient.addColorStop(1, withAlpha(trailColor, isActive ? 0.24 : isChain ? 0.16 : 0.12, "239, 226, 163"));
+      ctx.fillStyle = glowGradient;
       ctx.beginPath();
-      ctx.moveTo(-trailLength, 0);
-      ctx.lineTo(-3, 0);
+      ctx.moveTo(trailStart, 0);
+      ctx.quadraticCurveTo(
+        trailStart + trailLength * 0.34,
+        -trailWidth * (isActive ? 0.95 : 0.72),
+        trailEnd,
+        -trailWidth * (isActive ? 0.42 : 0.3),
+      );
+      ctx.lineTo(trailEnd, trailWidth * (isActive ? 0.42 : 0.3));
+      ctx.quadraticCurveTo(
+        trailStart + trailLength * 0.34,
+        trailWidth * (isActive ? 0.95 : 0.72),
+        trailStart,
+        0,
+      );
+      ctx.fill();
+
+      const streakGradient = ctx.createLinearGradient(trailStart, 0, trailEnd, 0);
+      streakGradient.addColorStop(0, withAlpha(palette.accent || "#fff4d1", 0, "255, 244, 209"));
+      streakGradient.addColorStop(0.55, withAlpha(palette.accent || "#fff4d1", isActive ? 0.16 : 0.08, "255, 244, 209"));
+      streakGradient.addColorStop(1, withAlpha(palette.accent || "#fff4d1", isActive ? 0.3 : 0.16, "255, 244, 209"));
+      ctx.strokeStyle = streakGradient;
+      ctx.lineCap = "round";
+      ctx.lineWidth = isActive ? 2.1 : isChain ? 1.25 : 1;
+      ctx.beginPath();
+      ctx.moveTo(trailStart + trailLength * 0.24, -trailWidth * 0.18);
+      ctx.lineTo(trailEnd - 0.5, -trailWidth * 0.06);
       ctx.stroke();
-      if (isActive) {
-        ctx.strokeStyle = withAlpha(palette.accent || "#fff4d1", 0.42, "255, 244, 209");
-        ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(trailStart + trailLength * 0.38, trailWidth * 0.16);
+      ctx.lineTo(trailEnd - 2, trailWidth * 0.08);
+      ctx.stroke();
+
+      if (isActive || isGreat) {
+        ctx.strokeStyle = withAlpha(palette.accent || "#fff4d1", isActive ? 0.22 : 0.12, "255, 244, 209");
+        ctx.lineWidth = isActive ? 1.4 : 1;
         ctx.beginPath();
-        ctx.moveTo(-trailLength - 2, 0);
-        ctx.lineTo(6, 0);
+        ctx.moveTo(trailStart + trailLength * 0.52, 0);
+        ctx.lineTo(trailEnd - 1, 0);
         ctx.stroke();
       }
       drawBladeGlyph(ctx, 0, 0, 0, scale, fill, stroke);
@@ -1416,21 +1629,18 @@
     function drawGreatswordCastPulse(ctx, pulseItem, alpha) {
       const palette = pulseItem.palette || {};
       const radius = pulseItem.radius * (0.38 + alpha * 0.62);
-      ctx.save();
-      ctx.translate(pulseItem.x, pulseItem.y);
-      ctx.rotate(pulseItem.angle || 0);
-      ctx.strokeStyle = withAlpha(palette.primary || "#ffe6a6", alpha * 0.72, "255, 230, 166");
-      ctx.lineWidth = 3.6;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, radius * 0.85, radius * 0.32, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.strokeStyle = withAlpha(palette.accent || "#fff5dc", alpha * 0.42, "255, 245, 220");
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      ctx.moveTo(-radius * 0.72, 0);
-      ctx.lineTo(radius * 0.9, 0);
-      ctx.stroke();
-      ctx.restore();
+      drawGreatswordBlade(ctx, {
+        x: pulseItem.x - Math.cos(pulseItem.angle || 0) * radius * 0.42,
+        y: pulseItem.y - Math.sin(pulseItem.angle || 0) * radius * 0.42,
+        angle: pulseItem.angle || 0,
+        length: radius * 1.7,
+        width: radius * 0.78,
+        primary: palette.primary || "#ffe6a6",
+        secondary: palette.secondary || "#9b6c33",
+        accent: palette.accent || "#fff5dc",
+        alpha,
+        glowStrength: 0.95,
+      });
     }
 
     function drawGreatswordHitPulse(ctx, pulseItem, alpha) {
@@ -1594,32 +1804,19 @@
       ctx.translate(pulseItem.x, pulseItem.y);
       ctx.rotate(pulseItem.angle || 0);
       if (pulseItem.routeStyle === "greatsword") {
-        ctx.strokeStyle = withAlpha(palette.primary || "#f0c97c", alpha * 0.78, "240, 201, 124");
-        ctx.lineWidth = 3.4;
-        ctx.beginPath();
-        ctx.arc(0, 0, radius * 0.7, -Math.PI * 0.34, Math.PI * 0.34);
-        ctx.stroke();
-        drawBladeGlyph(
-          ctx,
-          radius * 0.7,
-          0,
-          Math.PI / 2,
-          0.92,
-          palette.primary || "#f0c97c",
-          palette.secondary || "#8e6130",
-        );
-        ctx.globalAlpha = 0.35 + alpha * 0.35;
-        drawBladeGlyph(
-          ctx,
-          radius * 0.28,
-          -radius * 0.18,
-          Math.PI / 2,
-          0.62,
-          palette.accent || "#fff1ca",
-          palette.secondary || "#8e6130",
-        );
-        ctx.globalAlpha = 1;
         ctx.restore();
+        drawGreatswordBlade(ctx, {
+          x: pulseItem.x + Math.cos(pulseItem.angle || 0) * radius * 0.05,
+          y: pulseItem.y + Math.sin(pulseItem.angle || 0) * radius * 0.05,
+          angle: pulseItem.angle || 0,
+          length: radius * 1.36,
+          width: radius * 0.74,
+          primary: palette.primary || "#f0c97c",
+          secondary: palette.secondary || "#8e6130",
+          accent: palette.accent || "#fff1ca",
+          alpha: 0.74 + alpha * 0.26,
+          glowStrength: 0.82,
+        });
         return;
       }
       ctx.strokeStyle = withAlpha(palette.primary || "#f7e6a7", alpha * 0.72, "247, 230, 167");

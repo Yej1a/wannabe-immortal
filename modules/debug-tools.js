@@ -16,6 +16,7 @@
     onSkillRouteChanged = () => {},
     applyDebugRouteCapstone = () => false,
     spawnBoss = () => {},
+    spawnMiniBoss = () => {},
     fillPath = () => {},
     tryUseActiveSlot = () => false,
   }) {
@@ -118,6 +119,15 @@
         turnRate: projectile.turnRate || 0,
         damage: projectile.damage,
       })),
+      enemyProjectiles: state.enemyProjectiles.map((projectile) => ({
+        kind: projectile.kind || "enemy-shot",
+        radius: projectile.radius,
+        damage: projectile.damage,
+        x: projectile.x,
+        y: projectile.y,
+        vx: projectile.vx || 0,
+        vy: projectile.vy || 0,
+      })),
       activeEffects: state.activeEffects.map((effect) => ({
         kind: effect.kind,
         routeStyle: effect.routeStyle || null,
@@ -154,6 +164,11 @@
         x: enemy.x,
         y: enemy.y,
         isMiniBoss: !!enemy.isMiniBoss,
+        miniBossKind: enemy.miniBossKind || null,
+        miniBossState: enemy.miniBossState || null,
+        miniBossStateTimer: enemy.miniBossStateTimer || 0,
+        miniBossShieldUntil: enemy.miniBossShieldUntil || 0,
+        miniBossTelegraphUntil: enemy.miniBossTelegraphUntil || 0,
       })),
       statuses: state.statuses.map((status) => ({
         name: status.name,
@@ -280,6 +295,31 @@
       state.campaign.bossSpawned = false;
       state.phaseLabel = `第${targetRun}轮 大Boss`;
       spawnBoss();
+      render();
+      return renderGameToText();
+    };
+    global.__debug_spawn_mini_boss = (stageIndex = 1) => {
+      const targetStage = Math.max(1, Math.min(3, Math.floor(stageIndex) || 1));
+      resetGame();
+      closeModal();
+      state.paused = false;
+      state.currentModal = null;
+      state.pendingLevelUps = 0;
+      state.debugSpawnSuppressed = true;
+      state.enemies = [];
+      state.projectiles = [];
+      state.enemyProjectiles = [];
+      state.activeEffects = [];
+      state.pulses = [];
+      state.drops = [];
+      state.campaign.runIndex = 1;
+      state.campaign.stageIndex = targetStage;
+      state.campaign.stageType = "small";
+      state.campaign.stageKills = state.campaign.targetKills || 0;
+      state.campaign.miniBossSpawned = false;
+      state.campaign.miniBossDefeated = false;
+      state.campaign.bossSpawned = false;
+      spawnMiniBoss();
       render();
       return renderGameToText();
     };

@@ -1038,3 +1038,177 @@ node --check modules/game-ui.js passed
   - stage 2 regains space to be the first real mixed-pressure check
   - active skills are back to being timing buttons rather than always-available background DPS
   - round-1 boss is much less likely to become a sponge, though later feel passes should still re-check whether some high-roll sword runs delete it too quickly
+
+2026-03-23 mini-boss combat design pass
+
+- Goal:
+  - align mini-boss combat behavior with the design doc's "stage-specific small boss bias" instead of leaving mini-bosses as mostly static HP checks
+- Implementation:
+  - `balance.js`
+    - added `miniBossTable` with 3 stage-bound profiles:
+      - `elite_guard`
+      - `ranged_elite`
+      - `charger_elite`
+  - `app.js`
+    - `spawnMiniBoss()` now reads the current stage's mini-boss profile
+    - mini-bosses now spawn with per-stage base type / stats / behavior config instead of always cloning the same elite shell
+    - normalized runtime kill payload so any mini-boss reports as `miniBoss` regardless of base enemy type
+    - exposed `spawnMiniBoss` to debug hooks
+  - `modules/systems/combat-update.js`
+    - added dedicated mini-boss AI branch
+    - `elite_guard`:
+      - keeps melee pressure
+      - periodically emits a short-range guard pulse to stop reading as a pure blood bag
+    - `ranged_elite`:
+      - maintains distance
+      - fires a 3-shot spread at intervals
+    - `charger_elite`:
+      - uses an explicit `idle -> windup -> dash -> recover` state machine
+      - dash impact and landing shock both deal damage
+  - `modules/debug-tools.js`
+    - added `__debug_spawn_mini_boss(stageIndex)`
+    - expanded `__debug_snapshot_runtime()` with enemy projectile and mini-boss state fields for targeted verification
+- Verification:
+  - syntax:
+    - `node --check balance.js`
+    - `node --check app.js`
+    - `node --check modules/systems/combat-update.js`
+    - `node --check modules/debug-tools.js`
+  - develop-web-game smoke:
+    - ran the Playwright client on `file:///D:/Desktop/WannabeImmortal/index.html`
+    - artifacts in `output/web-game/mini-boss-design-smoke`
+  - targeted browser validation:
+    - used Playwright + `__debug_spawn_mini_boss(stageIndex)` to sample all 3 mini-bosses
+    - artifacts in `output/web-game/mini-boss-design-targeted`
+    - `summary.json`
+      - stage 1 mini-boss reduced player HP and stayed active as `elite_guard`
+      - stage 2 mini-boss produced persistent enemy projectiles as `ranged_elite`
+      - stage 3 mini-boss reduced player HP and cycled as `charger_elite`
+    - `timeline-summary.json`
+      - stage 1 reached `maxPulses: 1`
+      - stage 2 reached `maxEnemyProjectiles: 5`
+      - stage 3 reported `seenStates: idle / windup / dash / recover`
+- Follow-up:
+  - current pass gives each mini-boss a readable attack identity, but the VFX language is still shared with generic bursts/projectiles
+  - if needed, next pass should add stage-specific telegraph visuals so players can distinguish pulse / spread shot / charge windup earlier
+
+2026-03-23 active enemy cap
+
+- Added `waves.maxActiveEnemies = 20` in `balance.js`
+- `app.js` spawn flow now stops adding normal waves once active non-boss / non-miniBoss enemies reach the cap
+- scheduled elites also respect the same cap and will wait until the live enemy count drops
+- mini-boss spawn was intentionally left uncapped so stage settlement cannot stall at target-kill completion
+
+2026-03-23 elite guard telegraph + visible shield
+
+- Goal:
+  - make stage-1 mini-boss pulse readable before damage lands
+  - give the pulse window a visible "护法" identity instead of an instant hidden AoE
+- Implementation:
+  - `balance.js`
+    - added `pulseTelegraph` and `shieldDamageMult` to `miniBossTable[1]`
+  - `modules/systems/combat-update.js`
+    - `elite_guard` pulse is now two-step:
+      - enter `pulse-windup`
+      - hold a short visible shield during the telegraph
+      - release the pulse after the windup finishes
+    - stored telegraph / shield timing on the mini-boss entity for rendering and damage mitigation
+  - `app.js`
+    - mini-bosses now take reduced damage while their guard shield is active
+  - `modules/render/game-renderer.js`
+    - added a visible warning circle around the guard mini-boss before the pulse resolves
+    - added a blue shield ring around the mini-boss during the protection window
+  - `modules/debug-tools.js`
+    - snapshot now includes guard mini-boss telegraph / shield timing fields
+- Verification:
+  - syntax:
+    - `node --check balance.js`
+    - `node --check app.js`
+    - `node --check modules/systems/combat-update.js`
+    - `node --check modules/render/game-renderer.js`
+    - `node --check modules/debug-tools.js`
+  - targeted browser validation:
+    - artifacts in `output/web-game/mini-boss-guard-telegraph`
+    - `pulse-windup.png` shows both the telegraph ring and the shield ring on the stage-1 mini-boss
+    - `summary.json` captured the mini-boss entering `pulse-windup`
+
+2026-03-23
+- Raised stage 2 and 3 mini-boss base stats in balance table for stronger late small-stage pressure.
+- Verification: node --check balance.js; Playwright file-url smoke for index.html.
+
+2026-03-23
+- Added a clean UTF-8 replacement for the path hint builder in inspect-system and switched runtime use to the clean version.
+- Verification: node --check modules/inspect-system.js; Playwright file-url smoke for index.html.
+
+2026-03-23 sword proportion pass
+
+- Adjusted the shared sword glyph in `modules/render/game-renderer.js` to shorten the hilt / pommel and push more visual weight into the blade.
+- Added a clearer guard block so the projectile silhouette reads as a sword instead of a spear-like shaft.
+- Bumped the renderer cache-bust query in `index.html` so the updated glyph loads on refresh.
+- Verification:
+  - `node --check modules/render/game-renderer.js`
+  - Playwright smoke via `web_game_playwright_client.js` on `file:///D:/Desktop/WannabeImmortal/index.html`
+  - targeted Playwright debug captures in `output/web-game/sword-hilt-visual` for `swarm-projectile.png`, `greatsword-projectile.png`, and `greatsword-active.png`
+
+2026-03-23
+- Rebalanced base auto cadence/damage so sword, thunder, and flame sit near 60 expected damage over 2 seconds with no upgrades.
+- Sword cooldown 0.82, thunder cooldown 0.96, flame tick 0.55 with 16 damage.
+- Verification: node --check modules/game-data.js; Playwright file-url smoke for index.html.
+
+2026-03-23 greatsword glow render pass
+
+- Reworked greatsword-route rendering in `modules/render/game-renderer.js` around a new blade-only helper.
+- Active greatsword field now renders as a wide glowing sword body with no visible hilt, using the existing warm gold palette.
+- Greatsword route cast pulse and auto-cast pulse were updated to reuse the same no-hilt glowing blade silhouette for consistency.
+- Bumped the renderer cache-bust query in `index.html`.
+- Verification:
+  - `node --check modules/render/game-renderer.js`
+  - targeted Playwright debug captures in `output/web-game/greatsword-live`
+  - visually checked `greatsword-active-live.png`
+
+2026-03-23 sword trail cleanup
+
+- Reworked sword projectile trails in `modules/render/game-renderer.js` from a single bright line into softer layered sword-aura streaks.
+- Added a small gap between blade and trail so the tail no longer reads like a hilt or handle.
+- Reduced the white highlight intensity and split it into two faint streaks plus an optional center shimmer for heavier variants.
+- Bumped the renderer cache-bust query in `index.html`.
+- Verification:
+  - `node --check modules/render/game-renderer.js`
+  - visually checked `output/web-game/swarm-live/swarm-projectile-soft-trail.png`
+
+2026-03-23 boss projectile verification
+
+- Checked the reported round-1 boss white projectile issue against current runtime logic and in-browser simulation.
+- No projectile-hit bug found in the current build.
+- Debug spawn verification with player barrier/guard cleared:
+  - round 1 boss projectile fan spawned 4 `boss-shot` projectiles and the first confirmed hit dealt `10.842` HP
+  - round 2 boss projectile fan spawned 3 `boss-shot` projectiles and the first confirmed hit dealt `16.016` HP
+  - round 3 boss projectile fan spawned 5 `boss-shot` projectiles and the first confirmed hit dealt `21.404` HP
+- Behavior note:
+  - these shots go through the normal `enemyProjectiles -> hitPlayer(...)` path
+  - post-hit invulnerability means a tight projectile fan usually lands one effective hit instead of the full cluster
+
+2026-03-23 player invulnerability flash
+
+- Added a visible invulnerability flash to the player renderer in `modules/render/game-renderer.js`.
+- During player invulnerability:
+  - the player body now flickers by lowering and restoring alpha in a fast pulse
+  - a thin dashed light ring appears around the player as an explicit invulnerability cue
+- Verification:
+  - `node --check modules/render/game-renderer.js`
+  - Playwright smoke via `web_game_playwright_client.js`
+  - targeted browser capture in `output/web-game/player-invuln-flash/invuln-flash.png`
+  - runtime summary in `output/web-game/player-invuln-flash/summary.json`
+
+2026-03-23
+- Fixed HP bar/text mismatch by removing width transition from the life fill while keeping XP/path fill transitions.
+- Verified with Playwright repro: after forcing hp from 160 to 16, DOM width and rendered width both snap to 8%.
+
+2026-03-23
+- Added an in-scene HP ratio bar above the player character. No numbers, ratio only.
+- Also clamped enemy ratio bar fill widths to avoid overflow.
+- Verification: node --check modules/render/game-renderer.js; Playwright scene screenshot with forced player HP.
+
+2026-03-23
+- Reduced base flame aura radius from 90 to 45.
+- Verification: node --check modules/game-data.js; Playwright file-url smoke for index.html.

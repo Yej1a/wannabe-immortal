@@ -118,6 +118,239 @@
       };
     }
 
+    function pushMiniBossVisual(enemy, radius) {
+      state.pulses.push({
+        x: enemy.x,
+        y: enemy.y,
+        radius,
+        damage: 0,
+        kind: "burst",
+        time: 0.22,
+        duration: 0.22,
+        hit: new Set(),
+        affectsBoss: false,
+      });
+    }
+
+    function spawnEnemyProjectile(enemy, angle, speed, radius, damageMult = 1) {
+      state.enemyProjectiles.push({
+        kind: enemy.isMiniBoss ? "mini-boss-shot" : "enemy-shot",
+        x: enemy.x,
+        y: enemy.y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        radius,
+        damage: enemy.damage * damageMult,
+        life: 3.5,
+        color: enemy.color === "white" ? "rgba(255, 240, 210, 0.96)" : "rgba(255, 122, 122, 0.96)",
+      });
+    }
+
+    function moveEnemyTowardPlayer(enemy, dt, dx, dy, dist, speed, overlap, tangentScale = 0.55) {
+      if (overlap > 0) {
+        const tangentX = -dy / dist;
+        const tangentY = dx / dist;
+        enemy.x += tangentX * speed * tangentScale * dt;
+        enemy.y += tangentY * speed * tangentScale * dt;
+        return;
+      }
+      enemy.x += (dx / dist) * speed * dt;
+      enemy.y += (dy / dist) * speed * dt;
+    }
+
+    function applyEnemyContactHit(enemy, cooldown) {
+      if (distance(enemy, state.player) >= enemy.radius + state.player.radius || enemy.attackTimer > 0) return false;
+      hitPlayer(enemy.damage, enemy);
+      enemy.attackTimer = cooldown;
+      return true;
+    }
+
+    function getMiniBossProfile(enemy, template) {
+      if (enemy.miniBossConfig) return enemy.miniBossConfig;
+      if (enemy.type === "ranged") {
+        return {
+          behavior: "ranged_elite",
+          preferredRange: 220,
+          retreatRange: 152,
+          shotCooldown: template.shotCooldown || 1.65,
+          projectileSpeed: template.projectileSpeed || 250,
+          projectileCount: 3,
+          spread: 0.2,
+          strafeSpeedMult: 0.34,
+          meleeCooldown: template.meleeCooldown || 0.72,
+        };
+      }
+      if (enemy.type === "charger") {
+        return {
+          behavior: "charger_elite",
+          dashCooldown: template.dashCooldown || 2.7,
+          windup: 0.4,
+          dashDuration: 0.34,
+          dashSpeedMult: template.dashSpeedMult || 3.7,
+          dashDamageMult: 1.25,
+          dashShockRadius: 78,
+          dashShockDamageMult: 0.85,
+          dashRecovery: 0.4,
+          meleeCooldown: template.meleeCooldown || 0.82,
+        };
+      }
+      return {
+        behavior: "elite_guard",
+        pulseCooldown: 2.8,
+        pulseTelegraph: 0.78,
+        pulseTriggerRange: 176,
+        pulseRadius: 94,
+        pulseDamageMult: 0.9,
+        shieldDamageMult: 0.42,
+        pulseRecovery: 0.45,
+        orbitSpeedMult: 0.56,
+        meleeCooldown: template.meleeCooldown || 0.82,
+      };
+    }
+
+    function updateMiniBoss(enemy, template, dt, dx, dy, dist, overlap, speedMult) {
+      const profile = getMiniBossProfile(enemy, template);
+      const meleeCooldown = profile.meleeCooldown || template.meleeCooldown || 0.72;
+
+      if (profile.behavior === "ranged_elite") {
+        enemy.shotTimer = (enemy.shotTimer ?? profile.shotCooldown) - dt;
+        const preferredRange = profile.preferredRange || 220;
+        const retreatRange = profile.retreatRange || preferredRange * 0.7;
+        const moveSpeed = enemy.speed * speedMult;
+        if (dist > preferredRange + 14) {
+          enemy.x += (dx / dist) * moveSpeed * dt;
+          enemy.y += (dy / dist) * moveSpeed * dt;
+        } else if (dist < retreatRange) {
+          enemy.x -= (dx / dist) * moveSpeed * 0.88 * dt;
+          enemy.y -= (dy / dist) * moveSpeed * 0.88 * dt;
+        } else {
+          const tangentX = -dy / dist;
+          const tangentY = dx / dist;
+          const strafeDir = Math.floor(state.time * 1.8) % 2 === 0 ? 1 : -1;
+          enemy.x += tangentX * moveSpeed * (profile.strafeSpeedMult || 0.34) * strafeDir * dt;
+          enemy.y += tangentY * moveSpeed * (profile.strafeSpeedMult || 0.34) * strafeDir * dt;
+        }
+        if (enemy.shotTimer <= 0) {
+          const baseAngle = Math.atan2(dy, dx);
+          const projectileCount = profile.projectileCount || 3;
+          const spread = profile.spread || 0.2;
+          for (let i = 0; i < projectileCount; i += 1) {
+            const angle = baseAngle + (i - (projectileCount - 1) / 2) * spread;
+            spawnEnemyProjectile(enemy, angle, profile.projectileSpeed || 250, 7);
+          }
+          enemy.shotTimer = profile.shotCooldown || 1.65;
+          pushMiniBossVisual(enemy, enemy.radius + 18);
+        }
+        const clamped = clampArenaPoint(enemy.x, enemy.y, enemy.radius + 12);
+        enemy.x = clamped.x;
+        enemy.y = clamped.y;
+        applyEnemyContactHit(enemy, meleeCooldown);
+        return;
+      }
+
+      if (profile.behavior === "charger_elite") {
+        enemy.miniBossState = enemy.miniBossState || "idle";
+        enemy.miniBossStateTimer = enemy.miniBossStateTimer ?? ((profile.dashCooldown || 2.7) * 0.6);
+        if (enemy.miniBossState === "windup") {
+          enemy.miniBossStateTimer -= dt;
+          enemy.x -= (dx / dist) * enemy.speed * speedMult * 0.16 * dt;
+          enemy.y -= (dy / dist) * enemy.speed * speedMult * 0.16 * dt;
+          if (enemy.miniBossStateTimer <= 0) {
+            enemy.miniBossState = "dash";
+            enemy.miniBossStateTimer = profile.dashDuration || 0.34;
+            enemy.miniBossDashHit = false;
+            enemy.miniBossDashVector = { x: dx / dist, y: dy / dist };
+          }
+        } else if (enemy.miniBossState === "dash") {
+          const dashVector = enemy.miniBossDashVector || { x: dx / dist, y: dy / dist };
+          const dashSpeed = enemy.speed * (profile.dashSpeedMult || 3.7) * speedMult;
+          enemy.x += dashVector.x * dashSpeed * dt;
+          enemy.y += dashVector.y * dashSpeed * dt;
+          enemy.miniBossStateTimer -= dt;
+          if (!enemy.miniBossDashHit && distance(enemy, state.player) < enemy.radius + state.player.radius + 6) {
+            hitPlayer(enemy.damage * (profile.dashDamageMult || 1.25), enemy);
+            enemy.miniBossDashHit = true;
+          }
+          if (enemy.miniBossStateTimer <= 0) {
+            pushMiniBossVisual(enemy, profile.dashShockRadius || 78);
+            if (distance(enemy, state.player) <= (profile.dashShockRadius || 78) + state.player.radius) {
+              hitPlayer(enemy.damage * (profile.dashShockDamageMult || 0.85), enemy);
+            }
+            enemy.miniBossState = "recover";
+            enemy.miniBossStateTimer = profile.dashRecovery || 0.4;
+            enemy.attackTimer = Math.max(enemy.attackTimer, profile.dashRecovery || 0.4);
+          }
+        } else if (enemy.miniBossState === "recover") {
+          enemy.miniBossStateTimer -= dt;
+          if (enemy.miniBossStateTimer <= 0) {
+            enemy.miniBossState = "idle";
+            enemy.miniBossStateTimer = profile.dashCooldown || 2.7;
+          }
+        } else {
+          enemy.miniBossStateTimer -= dt;
+          moveEnemyTowardPlayer(enemy, dt, dx, dy, dist, enemy.speed * speedMult * 0.9, overlap, 0.48);
+          if (enemy.miniBossStateTimer <= 0) {
+            enemy.miniBossState = "windup";
+            enemy.miniBossStateTimer = profile.windup || 0.4;
+            enemy.miniBossDashVector = { x: dx / dist, y: dy / dist };
+            pushMiniBossVisual(enemy, enemy.radius + 22);
+          }
+          applyEnemyContactHit(enemy, meleeCooldown);
+        }
+        const clamped = clampArenaPoint(enemy.x, enemy.y, enemy.radius + 12);
+        enemy.x = clamped.x;
+        enemy.y = clamped.y;
+        return;
+      }
+
+      enemy.miniBossState = enemy.miniBossState || "idle";
+      if (enemy.miniBossState === "pulse-windup") {
+        enemy.miniBossStateTimer = Math.max(0, (enemy.miniBossStateTimer || 0) - dt);
+        const tangentX = -dy / dist;
+        const tangentY = dx / dist;
+        enemy.x += tangentX * enemy.speed * speedMult * 0.26 * dt;
+        enemy.y += tangentY * enemy.speed * speedMult * 0.26 * dt;
+        if (enemy.miniBossStateTimer <= 0) {
+          enemy.miniBossPulseTimer = profile.pulseCooldown || 2.8;
+          enemy.miniBossState = "idle";
+          enemy.miniBossTelegraphUntil = 0;
+          enemy.miniBossShieldUntil = 0;
+          pushMiniBossVisual(enemy, profile.pulseRadius || 94);
+          if (distance(enemy, state.player) <= (profile.pulseRadius || 94) + state.player.radius) {
+            hitPlayer(enemy.damage * (profile.pulseDamageMult || 0.9), enemy);
+          }
+          enemy.attackTimer = Math.max(enemy.attackTimer, profile.pulseRecovery || 0.45);
+        }
+        const clamped = clampArenaPoint(enemy.x, enemy.y, enemy.radius + 12);
+        enemy.x = clamped.x;
+        enemy.y = clamped.y;
+        return;
+      }
+
+      enemy.miniBossPulseTimer = (enemy.miniBossPulseTimer ?? ((profile.pulseCooldown || 2.8) * 0.75)) - dt;
+      if (dist > (profile.pulseRadius || 94) * 0.72) {
+        moveEnemyTowardPlayer(enemy, dt, dx, dy, dist, enemy.speed * speedMult, overlap, profile.orbitSpeedMult || 0.56);
+      } else {
+        const tangentX = -dy / dist;
+        const tangentY = dx / dist;
+        enemy.x += tangentX * enemy.speed * speedMult * (profile.orbitSpeedMult || 0.56) * dt;
+        enemy.y += tangentY * enemy.speed * speedMult * (profile.orbitSpeedMult || 0.56) * dt;
+      }
+      if (enemy.miniBossPulseTimer <= 0 && dist <= (profile.pulseTriggerRange || 176)) {
+        enemy.miniBossState = "pulse-windup";
+        enemy.miniBossStateTimer = profile.pulseTelegraph || 0.78;
+        enemy.miniBossTelegraphDuration = profile.pulseTelegraph || 0.78;
+        enemy.miniBossTelegraphUntil = state.time + (profile.pulseTelegraph || 0.78);
+        enemy.miniBossShieldUntil = state.time + (profile.pulseTelegraph || 0.78);
+        enemy.miniBossShieldMult = profile.shieldDamageMult || 0.42;
+        enemy.miniBossPulseRadius = profile.pulseRadius || 94;
+      }
+      const clamped = clampArenaPoint(enemy.x, enemy.y, enemy.radius + 12);
+      enemy.x = clamped.x;
+      enemy.y = clamped.y;
+      applyEnemyContactHit(enemy, meleeCooldown);
+    }
+
     function queueBossLaneStrike({
       boss,
       skillId,
@@ -794,7 +1027,11 @@
               && distance(pulseItem, state.boss) <= pulseItem.innerRadius + state.boss.radius
               ? (pulseItem.innerDamageMult || 1)
               : 1;
-            dealDamage(state.boss, pulseItem.damage * flameMult, pulseItem.kind);
+            dealDamage(
+              state.boss,
+              pulseItem.damage * flameMult * (pulseItem.bossDamageMult || 1),
+              pulseItem.kind,
+            );
           }
         }
         return pulseItem.time > 0;
@@ -814,6 +1051,10 @@
         const dist = Math.max(1, Math.hypot(dx, dy));
         const overlap = enemy.radius + state.player.radius - dist;
         enemy.attackTimer -= dt;
+        if (enemy.isMiniBoss) {
+          updateMiniBoss(enemy, template, dt, dx, dy, dist, overlap, speedMult);
+          return;
+        }
         if (enemy.type === "ranged") {
           enemy.shotTimer -= dt;
           if (dist > (template.preferredRange || 160)) {

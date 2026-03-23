@@ -185,11 +185,11 @@
 
     function getStatusDescription(status) {
       const effects = status.effects || {};
-      if (status.name === "清明") return "白道 1/3 状态，提供拾取、吸附与击杀回复。";
-      if (status.name === "灵护") return "白道 2/3 状态，提供护体、精英奖励吸附与状态结束返还判定。";
+      if (status.name === "清明") return "白道 1/3 状态，提供拾取、移速、吸附与击杀回复。";
+      if (status.name === "灵护") return "白道 2/3 状态，提供护体与状态结束返还判定。";
       if (status.name === "天息") return "白槽满后手动释放的白道状态，会触发安定脉冲并提供持续护持。";
-      if (status.name === "煞燃") return "黑道 1/3 状态，提供压血换节奏的伤害、施法与移速强化。";
-      if (status.name === "魔驰") return "黑道 2/3 状态，提供主动冷却流速与低血斩杀窗口。";
+      if (status.name === "煞燃") return "黑道 1/3 状态，提供爆发式的伤害、施法与移速强化。";
+      if (status.name === "魔驰") return "黑道 2/3 状态，提供更强的主动冷却流速与低血斩杀窗口。";
       if (status.name === "魔沸") return "黑槽满后手动释放的黑道状态，会触发杀伐冲击并进入收割态。";
       if (status.name === "归元") return "混道互转状态，当前白道回复会短暂转成伤害提升。";
       if (effects.onKillHealPct) return "击杀触发型战斗增益状态。";
@@ -202,7 +202,6 @@
       const lines = [`剩余时间 ${formatSeconds(status.remaining)}`];
       if (effects.pickupBonus) lines.push(`额外拾取范围 +${Math.round(effects.pickupBonus)}`);
       if (effects.attractRadius && effects.attractSpeed) lines.push(`掉落会在 ${Math.round(effects.attractRadius)} 范围内被吸向角色`);
-      if (effects.eliteAttractSpeedMult) lines.push(`精英与Boss奖励吸附速度提升 ${formatSignedPercent(effects.eliteAttractSpeedMult - 1)}`);
       if (effects.onKillHealPct) lines.push(`击杀回复 ${formatPercent(effects.onKillHealPct)} 最大生命`);
       if (effects.damageMult) lines.push(`伤害 ${formatSignedPercent(effects.damageMult - 1)}`);
       if (effects.castMult) lines.push(`自动施法频率 ${formatSignedPercent(effects.castMult - 1)}`);
@@ -223,7 +222,7 @@
 
     function getStatusTone(name) {
       if (name === "清明" || name === "灵护" || name === "天息" || name === "护体") return "white";
-      if (name === "煞燃" || name === "魔驰" || name === "魔沸" || name === "袭势") return "black";
+      if (name === "煞燃" || name === "魔驰" || name === "魔沸") return "black";
       return "neutral";
     }
 
@@ -231,11 +230,10 @@
       if (status.name === "清明") return "吸附/回复";
       if (status.name === "灵护") return "护体/返还";
       if (status.name === "天息") return "稳场/吸附";
-      if (status.name === "煞燃") return "压血/爆裂";
-      if (status.name === "魔驰") return "追杀/主动";
+      if (status.name === "煞燃") return "爆裂/疾行";
+      if (status.name === "魔驰") return "斩杀/主动";
       if (status.name === "魔沸") return "开杀/爆发";
       if (status.name === "护体") return "护体";
-      if (status.name === "袭势") return "追杀叠层";
       return "战斗状态";
     }
 
@@ -258,15 +256,12 @@
       const losses = [];
       if (effects.drain) losses.push(`每秒损失 ${formatPercent(effects.drain, 1)} 最大生命`);
       if (effects.incomingMult > 1) losses.push(describeIncomingMult(effects.incomingMult).trim());
-      if (effects.requireBarrier) losses.push("护体消失后，精英奖励吸附只保留基础状态收益");
       const fixed = [];
       if (status.name === "清明" || status.name === "煞燃") fixed.push("同一充能周期内只触发一次");
       if (status.name === "灵护" || status.name === "魔驰") fixed.push("同一充能周期内只触发一次");
       if (status.name === "天息" || status.name === "魔沸") fixed.push("同名状态不可叠加，释放后对应槽位清空");
       if (status.name === "灵护") fixed.push("结束时若生命仍高于 70%，返还 8 点白道值");
-      if (status.name === "魔驰") fixed.push("近身命中或主动进攻可叠加袭势，最多 5 层");
       if (status.name === "护体") fixed.push("护体会优先承受伤害，不会新增第二护体条");
-      if (status.name === "袭势") fixed.push("袭势由魔驰窗口中的近身命中或主动进攻触发");
       return { gains, losses, fixed };
     }
 
@@ -301,23 +296,6 @@
           fixed: ["护体不会改写 Q / E 的基底逻辑，也不会新增第二护体条"],
         });
       }
-      if (state.blackMomentumStacks > 0 && state.blackMomentumTimer > 0) {
-        items.push({
-          key: "black-momentum",
-          tone: "black",
-          label: `袭势 ${state.blackMomentumStacks}层`,
-          title: "袭势",
-          meta: `剩余 ${formatSeconds(state.blackMomentumTimer)}`,
-          body: "袭势是魔驰窗口中的临时追杀叠层，会继续放大当前近身压制收益。",
-          gains: [
-            `当前层数 ${state.blackMomentumStacks}`,
-            `剩余时间 ${formatSeconds(state.blackMomentumTimer)}`,
-            `每层额外伤害 ${formatSignedPercent(PATH_COMBAT.black.tier2AssaultStackMult)}`,
-          ],
-          losses: [],
-          fixed: ["袭势持续 2 秒，最多叠加 5 层"],
-        });
-      }
       return items;
     }
 
@@ -327,8 +305,6 @@
       const routeStage = getSkillRouteStage(skillId, skill);
       const route = routeStage?.route || activeProfile;
       lines.push(`当前路线 ${getSkillRouteLabel(skillId, skill)}`);
-      if (routeStage) lines.push(`路线阶段 ${getRouteStageLabel(routeStage)}`);
-      if (route?.capstoneName) lines.push(`毕业词条 ${route.capstoneName}`);
       if (route?.identityTags?.length) lines.push(`路线标签 ${route.identityTags.join(" / ")}`);
       if (route?.activeClimaxText) lines.push(`主动高潮 ${route.activeClimaxText}`);
       lines.push(`当前主动 ${activeProfile.activeName}`);
@@ -373,7 +349,6 @@
         const routeStage = getSkillRouteStage(id, skill);
         const route = routeStage?.route || activeProfile;
         const routeLabel = getSkillRouteLabel(id, skill);
-        const routeStageLabel = getRouteStageLabel(routeStage);
         const activeLevel = getActiveLevel(skill);
         const activeText = activeLevel > 0
           ? (skill.activeTimer > 0 ? `主动 ${slotIndex} 键 ${formatSeconds(skill.activeTimer)}` : `主动 ${slotIndex} 键 已就绪`)
@@ -387,17 +362,13 @@
           key: id,
           name: `${slotIndex}. ${template.name}`,
           detail: `${detail}<br>${activeProfile.activeName}<br>${activeText}`,
-          badges: [
-            routeLabel,
-            routeStageLabel,
-            ...(routeStage?.graduated && route?.capstoneName ? [route.capstoneName] : []),
-          ],
+          badges: [routeLabel],
           stageClass: routeStage?.stage || "prototype",
           climaxText: route?.activeClimaxText || "",
           title: `${slotIndex}. ${template.name}`,
           meta: activeLevel > 0
-            ? `${routeLabel} | ${routeStageLabel} | 主动已解锁`
-            : `${routeLabel} | ${routeStageLabel} | 主动未解锁`,
+            ? `${routeLabel} | 主动已解锁`
+            : `${routeLabel} | 主动未解锁`,
           body: getRouteSummaryText(routeStage, activeProfile) || template.description,
           gains: getSkillInspectLines(id, skill, slotIndex),
           losses: activeLevel > 0 ? [] : [`主动术法需 Rank ${ACTIVE_UNLOCK_RANK} 才会解锁`],
@@ -462,20 +433,22 @@
 
     function buildPathHintHtml() {
       const whiteRelease = state.whitePath.full
-        ? "当前白槽已满，Q 可释放天息。"
-        : `白槽 ${PATH_COMBAT.thresholds.tier1} 触发清明，${PATH_COMBAT.thresholds.tier2} 触发灵护，${PATH_COMBAT.thresholds.full} 满槽后 Q 可释放天息。`;
+        ? "当前白槽已满，按 Q 可释放天息。"
+        : `白槽 ${PATH_COMBAT.thresholds.tier1} 触发清明，${PATH_COMBAT.thresholds.tier2} 触发灵护，${PATH_COMBAT.thresholds.full} 满槽后按 Q 可释放天息。`;
       const blackRelease = state.blackPath.full
-        ? "当前黑槽已满，E 可释放魔沸。"
-        : `黑槽 ${PATH_COMBAT.thresholds.tier1} 触发煞燃，${PATH_COMBAT.thresholds.tier2} 触发魔驰，${PATH_COMBAT.thresholds.full} 满槽后 E 可释放魔沸。`;
+        ? "当前黑槽已满，按 E 可释放魔沸。"
+        : `黑槽 ${PATH_COMBAT.thresholds.tier1} 触发煞燃，${PATH_COMBAT.thresholds.tier2} 触发魔驰，${PATH_COMBAT.thresholds.full} 满槽后按 E 可释放魔沸。`;
       return `
         <div class="path-hint-block">
-          <strong class="path-hint-title">白槽满说明</strong>
+          <strong class="path-hint-title">白槽说明</strong>
           <div class="path-hint-body">${whiteRelease}</div>
+          <div class="path-hint-body">白道感悟：持续 4 秒未受伤后，每 6 秒额外获得 3 点白道值；生命高于 75% 时击杀精英或小 Boss，额外获得 8 点白道值。</div>
           <div class="path-hint-body">白槽每累计满 1 次，白点化点 +1。当前白点 ${state.whiteInfusionPoints}，用于白道点化命格，不消耗当前白槽。</div>
         </div>
         <div class="path-hint-block">
-          <strong class="path-hint-title">黑槽满说明</strong>
+          <strong class="path-hint-title">黑槽说明</strong>
           <div class="path-hint-body">${blackRelease}</div>
+          <div class="path-hint-body">黑道感悟：生命低于 45% 时完成击杀，额外获得 2 点黑道值，内置冷却 1.2 秒；近身击杀精英或小 Boss，额外获得 8 点黑道值。</div>
           <div class="path-hint-body">黑槽每累计满 1 次，黑点化点 +1。当前黑点 ${state.blackInfusionPoints}，用于黑道点化命格，不消耗当前黑槽。</div>
         </div>
       `;

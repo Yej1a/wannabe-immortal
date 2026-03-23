@@ -477,7 +477,7 @@
       id: "sword",
       name: "飞剑诀",
       description: "自动追踪最近敌人的飞剑术。",
-      baseCooldown: 0.9,
+      baseCooldown: 0.82,
       baseDamage: 24,
       baseProjectiles: 1,
       art: {
@@ -490,7 +490,7 @@
       id: "thunder",
       name: "掌心雷",
       description: "对最近敌人施加落雷，可连锁。",
-      baseCooldown: 1.4,
+      baseCooldown: 0.96,
       baseDamage: 28,
       splash: 54,
       art: {
@@ -503,9 +503,9 @@
       id: "flame",
       name: "火环术",
       description: "环身火域持续灼烧近身敌人。",
-      radius: 90,
-      tick: 0.5,
-      damage: 22,
+      radius: 60,
+      tick: 0.55,
+      damage: 16,
       art: {
         primary: "#ffb16a",
         secondary: "#ff623c",

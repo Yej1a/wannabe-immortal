@@ -25,6 +25,7 @@
       openDestinyOffer,
       openRunShopModal,
     } = deps;
+    const STARTER_SKILL_POOL = ["sword", "thunder", "flame"];
 
     function resetGame() {
       dom.startBtn.blur();
@@ -34,7 +35,6 @@
       Object.assign(state, fresh);
       state.pendingShopResult = false;
       state.pendingShopMessage = "";
-      unlockSkill(state, "sword");
       showOverlay(false);
       dom.startBtn.textContent = "重新开始";
       state.mode = "playing";
@@ -42,22 +42,26 @@
       state.phaseLabel = "混元试炼";
       closeModal();
       setToast("试炼开始");
-      startCurrentStage();
-      maybeOpenStarterChoice(() => {
-        openDestinyOffer({
-          title: "命格初定",
-          body: "轮回初启，从三枚命格中择一带入本局。",
+      maybeOpenInitialSkillChoice(() => {
+        startCurrentStage();
+        maybeOpenStarterChoice(() => {
+          openDestinyOffer({
+            title: "命格初定",
+            body: "轮回初启，从三枚命格中择一带入本局。",
+          });
         });
       });
     }
 
     function getStageTargetKills() {
       if (state.campaign.stageIndex === 1) return 40;
-      return 12 + (state.campaign.runIndex - 1) * 5 + (state.campaign.stageIndex - 1) * 3;
+      if (state.campaign.stageIndex === 2) return 50;
+      if (state.campaign.stageIndex === 3) return 60;
+      return 60;
     }
 
     function getEnemyProgressMult() {
-      return 1 + (state.campaign.runIndex - 1) * 0.35 + (state.campaign.stageIndex - 1) * 0.14;
+      return 1 + (state.campaign.runIndex - 1) * 0.5 + (state.campaign.stageIndex - 1) * 0.4;
     }
 
     function clearCombatEntities() {
@@ -191,19 +195,43 @@
       openRunShopModal(false, `第${state.campaign.runIndex}轮已破，道途又进了一步。`);
     }
 
+    function maybeOpenInitialSkillChoice(onComplete = () => {}) {
+      state.paused = true;
+      state.currentModal = "starter-skill";
+      renderModal({
+        title: "起手术法",
+        body: "从飞剑诀、掌心雷、火环术中自选 1 个开始本局。",
+        choices: STARTER_SKILL_POOL.map((id) => ({
+          title: `习得${skills[id].name}`,
+          body: skills[id].description,
+          onClick: () => {
+            unlockSkill(state, id);
+            closeModal();
+            state.paused = false;
+            setToast(`起手术法：${skills[id].name}`);
+            onComplete();
+          },
+        })),
+      });
+    }
+
     function maybeOpenStarterChoice(onComplete = () => {}) {
       if (!(metaState.upgrades.starter > 0)) {
         onComplete();
         return;
       }
-      const options = ["thunder", "flame", "guard"]
+      const options = STARTER_SKILL_POOL.filter((id) => !state.player.skills[id])
         .sort(() => Math.random() - 0.5)
         .slice(0, 2);
+      if (!options.length) {
+        onComplete();
+        return;
+      }
       state.paused = true;
       state.currentModal = "starter";
       renderModal({
         title: "前世所悟",
-        body: "选择一个额外开局术法，带着前世残悟重入轮回。",
+        body: "额外再选 1 个起手术法，候选只来自飞剑诀、掌心雷、火环术。",
         choices: options.map((id) => ({
           title: `习得${skills[id].name}`,
           body: skills[id].description,

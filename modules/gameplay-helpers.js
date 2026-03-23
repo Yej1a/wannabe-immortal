@@ -99,9 +99,7 @@
       const routeStage = getSkillRouteStage(skillId, skill);
       if (!routeStage) return "未分路";
       if (!routeStage.locked) return `未分路（当前按 ${routeStage.route.label} 原型）`;
-      if (routeStage.graduated) return `${routeStage.route.label}·已毕业`;
-      if (routeStage.branchCount >= 2) return `${routeStage.route.label}·成型`;
-      return `${routeStage.route.label}·分路锁定`;
+      return routeStage.route.label;
     }
 
     function getSkillRouteLabel(skillId, skill) {
@@ -330,17 +328,11 @@
       let radius = 0;
       let speed = 0;
       let speedMult = 1;
-      const eliteReward = drop.isEliteReward || drop.isMiniBossReward;
       state.statuses.forEach((status) => {
         const effects = status.effects;
         if (effects.attractRadius && effects.attractSpeed) {
           radius = Math.max(radius, effects.attractRadius);
           speed = Math.max(speed, effects.attractSpeed);
-        }
-        if (eliteReward && effects.eliteAttractSpeedMult && (!effects.requireBarrier || state.player.barrier > 0)) {
-          radius = Math.max(radius, PATH_COMBAT.white.fullAttractRadius);
-          speed = Math.max(speed, PATH_COMBAT.white.fullAttractSpeed / effects.eliteAttractSpeedMult);
-          speedMult = Math.max(speedMult, effects.eliteAttractSpeedMult);
         }
       });
       if (drop.heguangBoosted) {
@@ -437,9 +429,6 @@
       state.statuses.forEach((status) => {
         if (status.effects.damageMult) mult *= status.effects.damageMult;
       });
-      if (state.blackMomentumStacks > 0 && state.blackMomentumTimer > 0) {
-        mult *= 1 + state.blackMomentumStacks * PATH_COMBAT.black.tier2AssaultStackMult;
-      }
       return mult;
     }
 
