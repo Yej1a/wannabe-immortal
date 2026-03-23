@@ -162,6 +162,7 @@
             state.pendingFreeShopRefreshes = 0;
             state.shopFreeRefreshes = 0;
             state.shopDestinyOffers = [];
+            state.shopHealingPotionSoldOut = false;
             state.mode = "result";
             state.running = false;
             state.paused = true;
@@ -169,6 +170,7 @@
           } else {
             state.lastRunDaoMarks = calculateRunDaoMarks(finalResult);
             state.daoMarks += state.lastRunDaoMarks;
+            state.shopHealingPotionSoldOut = false;
             if (state.dandingTriggerCount >= DANDING_FREE_REFRESH_THRESHOLD) {
               state.pendingFreeShopRefreshes += 1;
             }
@@ -200,6 +202,7 @@
       state.pendingFreeShopRefreshes = 0;
       state.shopFreeRefreshes = 0;
       state.shopDestinyOffers = [];
+      state.shopHealingPotionSoldOut = false;
       state.lastRunPoints = calculateRunPoints(result);
       metaState.points += state.lastRunPoints;
       metaState.runs += 1;

@@ -981,3 +981,60 @@ node --check modules/game-ui.js passed
 - Intent:
   - keep the design doc aligned with what is already playable in code
   - avoid future regressions back to the old “one shared boss skeleton” understanding
+2026-03-23 first-pass stage feel balance retune
+
+- Goal for this pass:
+  - retune the first playable balance around small-stage feel instead of only raw difficulty
+  - align current runtime values back toward the live design doc for:
+    - player base growth pacing
+    - stage spawn tempo and enemy composition
+    - monster / boss survivability and pressure
+    - active-skill base cooldown bands
+- Main balance changes:
+  - `balance.js`
+    - aligned player XP curve closer to the design doc early-growth table
+    - added `activeSkillTable` so active cooldowns live in balance data again
+    - retuned wave pacing:
+      - slower stage-1 spawn cadence
+      - lower early wave counts
+      - stage-specific enemy weight profiles so stage 1 is mostly grunts, stage 2 mixes in more ranged / charger pressure, and stage 3 tightens again
+      - earlier elite schedule so elite pressure can actually appear during real runs
+    - reduced baseline small-enemy pressure:
+      - lower grunt / charger / ranged HP or damage
+      - slower ranged projectile tempo
+      - slightly softer elite / mini-boss statline
+    - reduced baseline boss statline and softened round-1 boss numbers to better fit its "active-skill teaching / window check" duty
+  - `modules/game-data.js`
+    - route actives no longer hardcode a unified `5s` cooldown
+    - sword / thunder / flame / guard now read their base cooldowns from balance data (`12 / 14 / 13 / 10`)
+  - `modules/flow/run-flow.js` + `modules/runtime-state.js` + `app.js`
+    - added stage-local elapsed tracking so wave pacing reads per-stage bands instead of one global formula
+    - fixed stage spawn logic to actually consume the balance wave table
+    - stopped resetting elite progress in a way that prevented scheduled elites from appearing in normal runs
+- Verification:
+  - syntax:
+    - `node --check balance.js`
+    - `node --check modules/game-data.js`
+    - `node --check modules/runtime-state.js`
+    - `node --check modules/flow/run-flow.js`
+    - `node --check app.js`
+  - targeted browser checks:
+    - `output/balance-precheck/summary.json`
+      - before the retune, a simple square-movement autoplay could still die in stage 1 before finishing the first small stage
+    - `output/balance-postcheck/summary.json`
+      - active cooldowns now report `sword 12 / thunder 14 / flame 13 / guard 10`
+      - the same autoplay with active usage reached round-1 shop instead of collapsing in stage 1
+    - `output/balance-postcheck-noactive/summary.json`
+      - no-active run still took meaningful HP pressure, so the pass did not flatten stage 1 into a no-threat opener
+    - reviewed screenshots:
+      - `output/balance-precheck/final.png`
+      - `output/balance-postcheck/final.png`
+      - `output/balance-postcheck-noactive/final.png`
+  - develop-web-game smoke:
+    - ran the Playwright client after the change
+    - artifacts in `output/web-game/balance-pass-smoke`
+- Current read after the pass:
+  - stage 1 now reads closer to "can stabilize and build momentum" instead of "early mixed-pressure dogpile"
+  - stage 2 regains space to be the first real mixed-pressure check
+  - active skills are back to being timing buttons rather than always-available background DPS
+  - round-1 boss is much less likely to become a sponge, though later feel passes should still re-check whether some high-roll sword runs delete it too quickly

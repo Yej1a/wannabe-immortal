@@ -32,7 +32,12 @@
   const BRANCH_UNLOCK_BASE_UPGRADES = 4;
   const BRANCH_CHOICE_GUARANTEE_COUNT = 2;
   const ACTIVE_UNLOCK_RANK = BRANCH_UNLOCK_BASE_UPGRADES + 2;
-  const UNIFIED_ACTIVE_BASE_COOLDOWN = 5;
+  const ACTIVE_SKILL_BALANCE = BALANCE.activeSkillTable || {
+    sword: { baseCooldown: 12 },
+    thunder: { baseCooldown: 14 },
+    flame: { baseCooldown: 13 },
+    guard: { baseCooldown: 10 },
+  };
   const HUMAN_ENDING_DESTINY_ID = null;
   const DESTINY_RUNTIME_RULES = {
     safeHpRatio: 0.75,
@@ -534,7 +539,7 @@
           identityTags: ["爆量", "密集", "齐射", "铺场", "剑潮"],
           activeClimaxText: "瞬时剑潮铺满战场",
           graduationSummary: "普攻会持续铺出剑潮，主动技则把战场瞬时压满。",
-          baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN,
+          baseCooldown: ACTIVE_SKILL_BALANCE.sword?.baseCooldown || 12,
           vfx: {
             palette: {
               primary: "#f7e6a7",
@@ -566,7 +571,7 @@
           identityTags: ["少量重剑", "切场", "压线", "压精英", "压 Boss"],
           activeClimaxText: "场上出现一把压场巨剑",
           graduationSummary: "普攻保持少量重剑压线，主动技则以超大巨剑接管精英与 Boss 窗口。",
-          baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN,
+          baseCooldown: ACTIVE_SKILL_BALANCE.sword?.baseCooldown || 12,
           vfx: {
             palette: {
               primary: "#f0c97c",
@@ -603,7 +608,7 @@
           identityTags: ["区域统治", "雷池", "持续降雷", "开窗爆发"],
           activeClimaxText: "区域雷池接管战场",
           graduationSummary: "普攻负责日常补漏，主动技会把一整片区域改写成持续降雷的雷池。",
-          baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN,
+          baseCooldown: ACTIVE_SKILL_BALANCE.thunder?.baseCooldown || 14,
           vfx: {
             palette: {
               primary: "#c9dbff",
@@ -630,7 +635,7 @@
           identityTags: ["追链", "补漏", "跳电", "连续收割"],
           activeClimaxText: "高速追链收割",
           graduationSummary: "普攻会把怪群稳定串成电网，主动技专门追残血、补漏口和高威胁点杀。",
-          baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN,
+          baseCooldown: ACTIVE_SKILL_BALANCE.thunder?.baseCooldown || 14,
           vfx: {
             palette: {
               primary: "#baf4ff",
@@ -663,7 +668,7 @@
           identityTags: ["高热", "贴脸", "融化", "内圈危险"],
           activeClimaxText: "局部高热烧穿",
           graduationSummary: "火环内圈会明显变成高热杀区，主动技则把贴脸区域直接烧穿。",
-          baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN,
+          baseCooldown: ACTIVE_SKILL_BALANCE.flame?.baseCooldown || 13,
           vfx: {
             palette: {
               primary: "#ffc278",
@@ -688,7 +693,7 @@
           identityTags: ["封区", "留焰", "切战场", "持续压场"],
           activeClimaxText: "留焰封区切开战场",
           graduationSummary: "火环外扩成持续火场，主动技结束后仍会留下余焰继续封路。",
-          baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN,
+          baseCooldown: ACTIVE_SKILL_BALANCE.flame?.baseCooldown || 13,
           vfx: {
             palette: {
               primary: "#ffd48e",
@@ -718,7 +723,7 @@
           identityTags: ["厚", "稳", "护体覆盖", "顶前不退"],
           activeClimaxText: "稳场重置局面",
           graduationSummary: "护体会变得更厚更稳，主动技不再只是震开，而是把局面强行稳回来。",
-          baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN,
+          baseCooldown: ACTIVE_SKILL_BALANCE.guard?.baseCooldown || 10,
           vfx: {
             palette: {
               primary: "#f0e1b1",
@@ -745,7 +750,7 @@
           identityTags: ["反震", "反弹", "借力反打", "强反制窗口"],
           activeClimaxText: "开反制窗口把攻势打回去",
           graduationSummary: "受击会不断炸出反震回冲，主动技则把短时窗口抬成真正的反打时机。",
-          baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN,
+          baseCooldown: ACTIVE_SKILL_BALANCE.guard?.baseCooldown || 10,
           vfx: {
             palette: {
               primary: "#dff2ff",
@@ -768,10 +773,10 @@
   };
 
   const activeSkillTable = {
-    sword: { baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN },
-    thunder: { baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN },
-    guard: { baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN },
-    flame: { baseCooldown: UNIFIED_ACTIVE_BASE_COOLDOWN },
+    sword: { baseCooldown: ACTIVE_SKILL_BALANCE.sword?.baseCooldown || 12 },
+    thunder: { baseCooldown: ACTIVE_SKILL_BALANCE.thunder?.baseCooldown || 14 },
+    guard: { baseCooldown: ACTIVE_SKILL_BALANCE.guard?.baseCooldown || 10 },
+    flame: { baseCooldown: ACTIVE_SKILL_BALANCE.flame?.baseCooldown || 13 },
   };
 
   const enemies = BALANCE.monsterTable;

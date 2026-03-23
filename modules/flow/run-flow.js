@@ -52,6 +52,7 @@
     }
 
     function getStageTargetKills() {
+      if (state.campaign.stageIndex === 1) return 40;
       return 12 + (state.campaign.runIndex - 1) * 5 + (state.campaign.stageIndex - 1) * 3;
     }
 
@@ -73,12 +74,12 @@
     function startCurrentStage() {
       clearCombatEntities();
       state.campaign.stageType = state.campaign.stageIndex === STAGES_PER_RUN ? "boss" : "small";
+      state.campaign.stageStartedAt = state.time;
       state.campaign.stageKills = 0;
       state.campaign.targetKills = getStageTargetKills();
       state.campaign.miniBossSpawned = false;
       state.campaign.miniBossDefeated = false;
       state.campaign.bossSpawned = false;
-      state.eliteIndex = state.eliteSchedule.length;
       state.player.x = WIDTH / 2;
       state.player.y = HEIGHT / 2;
       state.phaseLabel = `第${state.campaign.runIndex}轮 第${state.campaign.stageIndex}关`;

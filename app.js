@@ -1488,7 +1488,7 @@ const levelChoices = [
   {
     id: "sword-swarm-1",
     name: "剑幕扩容",
-    desc: "飞剑数量额外 +2，并锁定飞剑到剑潮流。",
+    desc: "分路：剑潮流。御剑如潮，重在铺场清群，以连绵剑势压得敌阵难近身。",
     canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "sword", "swarm"),
     apply: (stateRef) => applySkillBranchUpgrade(stateRef, "sword", "swarm", (skill) => {
       skill.projectiles += 2;
@@ -1498,17 +1498,17 @@ const levelChoices = [
   {
     id: "sword-swarm-2",
     name: "万刃同调",
-    desc: "飞剑伤害 +20%，万剑归宗追加剑雨数量。",
+    desc: "飞剑伤害 +10%，万剑归宗追加剑雨数量。",
     canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "sword", "swarm"),
     apply: (stateRef) => applySkillBranchUpgrade(stateRef, "sword", "swarm", (skill) => {
-      skill.damage *= 1.2;
+      skill.damage *= 1.1;
       skill.swarmVolleyBonus += 2;
     }),
   },
   {
     id: "sword-swarm-capstone",
     name: "万剑齐发",
-    desc: "数量流毕业：普攻飞剑数量永久 +2，主动技剑潮会瞬时铺满战场。",
+    desc: "普攻飞剑数量永久 +2，主动技剑潮会瞬时铺满战场。",
     canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "sword", "swarm"),
     apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "sword", "swarm", (skill) => {
       skill.projectiles += 2;
@@ -1518,7 +1518,7 @@ const levelChoices = [
   {
     id: "sword-great-1",
     name: "巨刃凝形",
-    desc: "解锁大剑流，巨阙镇场体积与切割宽度提升。",
+    desc: "分路：大剑流。凝剑成阙，走的是少剑重斩的路数，专以沉重剑势镇压强敌。",
     canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "sword", "greatsword"),
     apply: (stateRef) => applySkillBranchUpgrade(stateRef, "sword", "greatsword", (skill) => {
       skill.greatswordWidthBonus += 1;
@@ -1538,7 +1538,7 @@ const levelChoices = [
   {
     id: "sword-great-capstone",
     name: "巨阙镇场",
-    desc: "大剑流毕业：巨剑更长、更久、更重，普攻重剑存在感也会同步抬高。",
+    desc: "巨剑更长、更久、更重，普攻重剑存在感也会同步抬高。",
     canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "sword", "greatsword"),
     apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "sword", "greatsword", (skill) => {
       skill.damage *= 1.12;
@@ -1577,7 +1577,7 @@ const levelChoices = [
   {
     id: "thunder-branch-chain-1",
     name: "引雷传导",
-    desc: "锁定雷法到连锁流，主动优先追链未命中目标。",
+    desc: "分路：连锁流。雷意走脉成网，讲究追杀漏网与牵连群敌，让电光不断场。",
     canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "thunder", "chain"),
     apply: (stateRef) => applySkillBranchUpgrade(stateRef, "thunder", "chain", (skill) => {
       skill.chain += 1;
@@ -1599,7 +1599,7 @@ const levelChoices = [
   {
     id: "thunder-chain-capstone",
     name: "连锁天雷",
-    desc: "连锁流毕业：普攻链路再扩 2 跳，主动技追链更稳更快。",
+    desc: "普攻链路再扩 2 跳，主动技追链更稳更快。",
     canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "thunder", "chain"),
     apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "thunder", "chain", (skill) => {
       skill.chain += 2;
@@ -1611,7 +1611,7 @@ const levelChoices = [
   {
     id: "thunder-branch-storm-1",
     name: "雷云积势",
-    desc: "锁定雷法到天罚流，掌心雷·天罚范围与持续时间提升。",
+    desc: "分路：天罚流。引天威化雷池，重在定域轰杀，一旦开势便以雷幕接管战场。",
     canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "thunder", "storm"),
     apply: (stateRef) => applySkillBranchUpgrade(stateRef, "thunder", "storm", (skill) => {
       skill.stormFocus += 1;
@@ -1631,7 +1631,7 @@ const levelChoices = [
   {
     id: "thunder-storm-capstone",
     name: "九霄雷池",
-    desc: "落雷流毕业：主动技拉成长驻雷池，区域统治和开窗爆发会明显抬高。",
+    desc: "主动技拉成长驻雷池，区域统治和开窗爆发会明显抬高。",
     canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "thunder", "storm"),
     apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "thunder", "storm", (skill) => {
       skill.stormFocus += 1;
@@ -1669,7 +1669,7 @@ const levelChoices = [
   {
     id: "flame-meteor-1",
     name: "灼骨",
-    desc: "锁定火环到爆落流，陨火天坠每波伤害更高。",
+    desc: "分路：爆落流。火势内敛藏锋，贴身焚骨，再以陨火坠地把近前敌人一并烧穿。",
     canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "flame", "meteor"),
     apply: (stateRef) => applySkillBranchUpgrade(stateRef, "flame", "meteor", (skill) => {
       skill.damage *= 1.16;
@@ -1690,7 +1690,7 @@ const levelChoices = [
   {
     id: "flame-meteor-capstone",
     name: "烬狱轮转",
-    desc: "伤害流毕业：火环内圈进入高热杀区，贴脸时更容易把敌人直接烧穿。",
+    desc: "火环内圈进入高热杀区，贴脸时更容易把敌人直接烧穿。",
     canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "flame", "meteor"),
     apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "flame", "meteor", (skill) => {
       skill.damage *= 1.18;
@@ -1702,7 +1702,7 @@ const levelChoices = [
   {
     id: "flame-zone-1",
     name: "焰域外推",
-    desc: "锁定火环到封区流，留焰封区范围更大。",
+    desc: "分路：封区流。火环外扩成域，以留焰断路逼位，让敌人步步受炙、难越雷池。",
     canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "flame", "zone"),
     apply: (stateRef) => applySkillBranchUpgrade(stateRef, "flame", "zone", (skill) => {
       skill.zoneFocus += 1;
@@ -1723,7 +1723,7 @@ const levelChoices = [
   {
     id: "flame-zone-capstone",
     name: "焚身领域",
-    desc: "范围流毕业：火环半径永久扩大，主动技结束后仍会留下余焰继续封区。",
+    desc: "火环半径永久扩大，主动技结束后仍会留下余焰继续封区。",
     canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "flame", "zone"),
     apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "flame", "zone", (skill) => {
       skill.radius *= 1.4;
@@ -1765,7 +1765,7 @@ const levelChoices = [
   {
     id: "guard-bulwark-1",
     name: "金城难破",
-    desc: "锁定金钟到护体流，护盾更厚且震荡更稳。",
+    desc: "分路：护体流。金钟覆体，走的是稳守镇场的路数，硬接锋芒后再徐徐压回去。",
     canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "guard", "bulwark"),
     apply: (stateRef) => applySkillBranchUpgrade(stateRef, "guard", "bulwark", (skill) => {
       skill.baseMaxShield = (skill.baseMaxShield || skill.maxShield) * 1.18;
@@ -1787,7 +1787,7 @@ const levelChoices = [
   {
     id: "guard-bulwark-capstone",
     name: "不灭金钟",
-    desc: "厚盾流毕业：破盾后会强撑一口气并重整护体，主动技更像稳场重置按钮。",
+    desc: "破盾后会强撑一口气并重整护体，主动技更像稳场重置按钮。",
     canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "guard", "bulwark"),
     apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "guard", "bulwark", (skill) => {
       skill.baseMaxShield *= 1.15;
@@ -1799,7 +1799,7 @@ const levelChoices = [
   {
     id: "guard-counter-1",
     name: "镜返",
-    desc: "锁定金钟到弹反流，返天钟鸣反制窗口更长。",
+    desc: "分路：弹反流。借敌势而鸣钟，一守一震之间夺回攻势，专等对手先露破绽。",
     canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "guard", "counter"),
     apply: (stateRef) => applySkillBranchUpgrade(stateRef, "guard", "counter", (skill) => {
       skill.counterFocus += 1;
@@ -1819,7 +1819,7 @@ const levelChoices = [
   {
     id: "guard-counter-capstone",
     name: "返天钟鸣",
-    desc: "弹反流毕业：主动技窗口会被拉长并显著抬高反震、反弹与借力反打收益。",
+    desc: "主动技窗口会被拉长，并显著抬高反震、反弹与借力反打收益。",
     canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "guard", "counter"),
     apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "guard", "counter", (skill) => {
       skill.counterFocus += 1;
@@ -2188,24 +2188,67 @@ function spawnMiniBoss() {
   setToast("小Boss现身");
 }
 
+function getStageElapsedTime() {
+  return Math.max(0, state.time - (state.campaign.stageStartedAt || 0));
+}
+
+function getWaveStageProfile() {
+  return BALANCE.waves.stageProfiles?.[state.campaign.stageIndex]
+    || BALANCE.waves.stageProfiles?.[3]
+    || {
+      intervalOffset: 0,
+      countOffset: 0,
+      gruntWeight: 1,
+      chargerWeight: 1,
+      rangedWeight: 1,
+    };
+}
+
+function pickWaveEnemyType(profile) {
+  const gruntWeight = Math.max(0, profile.gruntWeight || 0);
+  const chargerWeight = Math.max(0, profile.chargerWeight || 0);
+  const rangedWeight = Math.max(0, profile.rangedWeight || 0);
+  const total = gruntWeight + chargerWeight + rangedWeight;
+  if (total <= 0) return "grunt";
+  const roll = Math.random() * total;
+  if (roll < gruntWeight) return "grunt";
+  if (roll < gruntWeight + chargerWeight) return "charger";
+  return "ranged";
+}
+
 function updateSpawn(dt) {
   if (state.debugSpawnSuppressed) return;
   if (state.bossFight || state.campaign.stageType === "boss" || state.campaign.miniBossSpawned) return;
   state.spawnTimer -= dt;
   if (state.spawnTimer <= 0) {
-    const waveCount = 2 + state.campaign.runIndex + Math.min(3, state.campaign.stageIndex);
-    for (let i = 0; i < waveCount; i += 1) {
-      const roll = Math.random();
-      if (roll < 0.55) spawnEnemy("grunt");
-      else if (roll < 0.8) spawnEnemy("charger");
-      else spawnEnemy("ranged");
-    }
-    const baseInterval = state.time < 180
+    const stageElapsed = getStageElapsedTime();
+    const profile = getWaveStageProfile();
+    const baseInterval = stageElapsed < BALANCE.waves.stageBandEarly
       ? BALANCE.waves.spawnIntervalEarly
-      : state.time < 360
+      : stageElapsed < BALANCE.waves.stageBandMid
         ? BALANCE.waves.spawnIntervalMid
-        : BALANCE.waves.spawnIntervalLate;
-    state.spawnTimer = Math.max(0.55, 1.75 - state.campaign.runIndex * 0.12 - state.campaign.stageIndex * 0.08);
+        : stageElapsed < BALANCE.waves.stageBandLate
+          ? BALANCE.waves.spawnIntervalLate
+          : BALANCE.waves.spawnIntervalEnd;
+    const baseCount = stageElapsed < BALANCE.waves.stageBandEarly
+      ? BALANCE.waves.countEarly
+      : stageElapsed < BALANCE.waves.stageBandMid
+        ? BALANCE.waves.countMid
+        : stageElapsed < BALANCE.waves.stageBandLate
+          ? BALANCE.waves.countLate
+          : BALANCE.waves.countEnd;
+    const waveCount = Math.max(
+      2,
+      Math.round(baseCount + (profile.countOffset || 0) + Math.max(0, state.campaign.runIndex - 1) * 0.5),
+    );
+    for (let i = 0; i < waveCount; i += 1) {
+      spawnEnemy(pickWaveEnemyType(profile));
+    }
+    const intervalReduction = Math.max(0, state.campaign.runIndex - 1) * BALANCE.waves.levelIntervalReduction;
+    state.spawnTimer = Math.max(
+      BALANCE.waves.minSpawnInterval,
+      baseInterval + (profile.intervalOffset || 0) - intervalReduction,
+    );
   }
   while (state.eliteIndex < state.eliteSchedule.length && state.time >= state.eliteSchedule[state.eliteIndex]) {
     spawnEnemy("elite");
@@ -2522,6 +2565,7 @@ function castActiveSword(skill) {
   const routeState = getSkillRouteState("sword", skill);
   const routeVfx = getSkillRouteVfx("sword", skill);
   const rewrite = getSwordRewriteProfile();
+  const swarmRoute = routeState?.routeId === "swarm";
   if (routeState?.routeId === "greatsword") {
     const sacrificeBoost = getActiveSacrificeBoost();
     const capstoneGreat = hasRouteCapstone("sword", skill, "greatsword");
@@ -2578,11 +2622,18 @@ function castActiveSword(skill) {
   }
   const sacrificeBoost = getActiveSacrificeBoost();
   const capstoneSwarm = hasRouteCapstone("sword", skill, "swarm");
+  const swarmPerSwordDamageMult = capstoneSwarm ? 0.6 : 0.72;
   const count = Math.round(
     (8 + level * 2 + (hasGuardFocus() ? 1 : 0) + rewrite.activeVolleyBonus + (capstoneSwarm ? 6 : 0))
     * (1 + (sacrificeBoost - 1) * 0.35),
   );
-  const damage = computeDamage(skill.damage * (1.35 + level * 0.18 + (capstoneSwarm ? 0.04 : 0)) * sacrificeBoost * rewrite.activeDamageMult);
+  const damage = computeDamage(
+    skill.damage
+    * (1.08 + level * 0.12)
+    * sacrificeBoost
+    * rewrite.activeDamageMult
+    * swarmPerSwordDamageMult,
+  );
   state.pulses.push({
     x: state.player.x,
     y: state.player.y,
@@ -2894,6 +2945,7 @@ function updateSkills(dt) {
     const rewrite = getSwordRewriteProfile();
     const capstoneSwarm = hasRouteCapstone("sword", skill, "swarm");
     const capstoneGreat = hasRouteCapstone("sword", skill, "greatsword");
+    const swarmRoute = routeState?.routeId === "swarm";
     skill.timer -= dt * castScale / state.player.globalCooldown;
     if (skill.timer <= 0) {
       const targets = getSwordTargets(skill.projectiles, rewrite.autoVolleyBonus);
@@ -2929,13 +2981,14 @@ function updateSkills(dt) {
         const offsetStrength = routeStyle === "greatsword" ? 6 : 12;
         const projectileSpeed = 380 * rewrite.projectileSpeedMult * (capstoneSwarm ? 1.06 : capstoneGreat ? 0.88 : 1);
         const projectileRadius = 6 * rewrite.projectileRadiusMult * (capstoneGreat ? 1.18 : 1);
+        const autoDamageMult = capstoneGreat ? 1.08 : swarmRoute ? (capstoneSwarm ? 0.72 : 0.84) : 1;
         state.projectiles.push({
           x: state.player.x + Math.cos(sideAngle) * sideIndex * offsetStrength,
           y: state.player.y + Math.sin(sideAngle) * sideIndex * offsetStrength,
           vx: ((enemy.x - state.player.x) / dist) * projectileSpeed,
           vy: ((enemy.y - state.player.y) / dist) * projectileSpeed,
           radius: projectileRadius,
-          damage: computeDamage(skill.damage * rewrite.damageMult * (capstoneGreat ? 1.08 : 1)),
+          damage: computeDamage(skill.damage * rewrite.damageMult * autoDamageMult),
           pierce: skill.pierce,
           life: 1.5,
           color: routeVfx.palette?.primary || "#d8c88d",

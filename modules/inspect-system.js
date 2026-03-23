@@ -533,6 +533,80 @@
       });
     }
 
+    // Keep skill copy effect-focused: only branch choice cards explain route branching.
+    function getSkillInspectLines(skillId, skill, slotIndex) {
+      const lines = [`当前 Rank ${skill.rank}`];
+      const activeProfile = getSkillActiveProfile(skillId, skill);
+      const activeLevel = getActiveLevel(skill);
+      lines.push(`当前主动 ${activeProfile.activeName}`);
+      if (isActiveUnlocked(skill)) {
+        lines.push(`主动技已解锁，按 ${slotIndex} 释放`);
+        lines.push(skill.activeTimer > 0 ? `主动冷却剩余 ${formatSeconds(skill.activeTimer)}` : "主动技已就绪");
+        lines.push(`主动等级 ${activeLevel}`);
+      } else {
+        lines.push(`主动技将在 Rank ${ACTIVE_UNLOCK_RANK} 解锁`);
+      }
+      if (skillId === "sword") {
+        lines.push(`单发伤害 ${Math.floor(skill.damage)}`);
+        lines.push(`飞剑数量 ${skill.projectiles}`);
+        lines.push(`穿透次数 ${skill.pierce}`);
+        lines.push(`自动冷却 ${skill.cooldown.toFixed(2)}s`);
+      } else if (skillId === "thunder") {
+        lines.push(`落雷伤害 ${Math.floor(getThunderDamage(skill))}`);
+        lines.push(`额外弹射 ${skill.chain}`);
+        lines.push(`雷息加深 ${skill.deepenStacks || 0} 层`);
+        lines.push(`自动冷却 ${skill.cooldown.toFixed(2)}s`);
+      } else if (skillId === "flame") {
+        lines.push(`火环伤害 ${Math.floor(skill.damage)}`);
+        lines.push(`火环半径 ${Math.floor(skill.radius)}`);
+        lines.push(`持续触发间隔 ${skill.tick.toFixed(2)}s`);
+        lines.push(skill.burst ? "已习得焚爆" : "尚未习得焚爆");
+      } else if (skillId === "guard") {
+        lines.push(`护盾上限 ${Math.ceil(skill.maxShield)}`);
+        lines.push(`当前护盾 ${Math.max(0, Math.ceil(skill.shield))}`);
+        lines.push(`重铸时间 ${skill.recharge.toFixed(2)}s`);
+        lines.push(skill.burst ? "破盾会触发震返冲击" : "尚未习得震返");
+      }
+      return lines;
+    }
+
+    function buildSkillInspectItems() {
+      const items = state.player.skillOrder.map((id, index) => {
+        const skill = state.player.skills[id];
+        const template = skills[id];
+        const slotIndex = index + 1;
+        const activeProfile = getSkillActiveProfile(id, skill);
+        const routeStage = getSkillRouteStage(id, skill);
+        const activeLevel = getActiveLevel(skill);
+        const activeText = activeLevel > 0
+          ? (skill.activeTimer > 0 ? `主动 ${slotIndex} 键 ${formatSeconds(skill.activeTimer)}` : `主动 ${slotIndex} 键 已就绪`)
+          : `主动 ${slotIndex} 键 Rank ${ACTIVE_UNLOCK_RANK} 解锁`;
+        let detail = `Rank ${skill.rank}`;
+        if (id === "guard") detail += ` | 护盾 ${Math.max(0, Math.ceil(skill.shield))}`;
+        else if (id === "sword") detail += ` | ${skill.projectiles} 剑`;
+        else if (id === "thunder") detail += ` | 伤害 ${Math.floor(getThunderDamage(skill))} | 链 ${skill.chain}`;
+        else if (id === "flame") detail += ` | 半径 ${Math.floor(skill.radius)}`;
+        return {
+          key: id,
+          name: `${slotIndex}. ${template.name}`,
+          detail: `${detail}<br>${activeProfile.activeName}<br>${activeText}`,
+          badges: skill.route ? [getSkillRouteLabel(id, skill)] : [],
+          stageClass: routeStage?.stage || "prototype",
+          climaxText: "",
+          title: `${slotIndex}. ${template.name}`,
+          meta: activeLevel > 0
+            ? `当前主动：${activeProfile.activeName}`
+            : `当前主动：${activeProfile.activeName} | Rank ${ACTIVE_UNLOCK_RANK} 解锁`,
+          body: template.description,
+          gains: getSkillInspectLines(id, skill, slotIndex),
+          losses: activeLevel > 0 ? [] : [`主动技需 Rank ${ACTIVE_UNLOCK_RANK} 才会解锁`],
+          fixed: [],
+        };
+      });
+      setInspectEntries("skill", items);
+      return items;
+    }
+
     return {
       buildHudViewModel,
       bindContainer,
