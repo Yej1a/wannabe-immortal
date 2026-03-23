@@ -302,6 +302,14 @@
       ctx.moveTo(start.x, start.y);
       ctx.lineTo(end.x, end.y);
       ctx.stroke();
+      if (effect.capstone) {
+        ctx.strokeStyle = withAlpha(accent, 0.3 + alpha * 0.18, "255, 244, 214");
+        ctx.lineWidth = effect.width * 0.42;
+        ctx.beginPath();
+        ctx.moveTo(start.x + nx * halfWidth * 0.18, start.y + ny * halfWidth * 0.18);
+        ctx.lineTo(end.x + nx * halfWidth * 0.12, end.y + ny * halfWidth * 0.12);
+        ctx.stroke();
+      }
       ctx.restore();
     }
 
@@ -344,10 +352,19 @@
       ctx.stroke();
 
       ctx.strokeStyle = withAlpha(secondary, 0.38 + alpha * 0.22, "255, 98, 40");
-      ctx.lineWidth = 6.5;
+      ctx.lineWidth = effect.isEmberField ? 4.2 : 6.5;
       ctx.beginPath();
       ctx.arc(0, 0, Math.max(12, effect.radius - 9), 0, Math.PI * 2);
       ctx.stroke();
+      if (effect.isEmberField) {
+        ctx.strokeStyle = withAlpha(primary, 0.34 + alpha * 0.2, "255, 215, 128");
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 8]);
+        ctx.beginPath();
+        ctx.arc(0, 0, effect.radius + 4, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
       ctx.restore();
     }
 
@@ -414,6 +431,37 @@
       ctx.restore();
     }
 
+    function drawBulwarkLastStandEffect(ctx, effect) {
+      const palette = effect.palette || {};
+      const alpha = clamp(effect.time / Math.max(0.01, effect.duration), 0, 1);
+      const pulse = 0.94 + Math.sin(state.time * 7.2) * 0.06;
+      ctx.save();
+      ctx.translate(effect.x, effect.y);
+      const shell = ctx.createRadialGradient(0, 0, effect.radius * 0.3, 0, 0, effect.radius + 28);
+      shell.addColorStop(0, withAlpha(palette.accent || "#fff6de", 0.1 + alpha * 0.12, "255, 246, 222"));
+      shell.addColorStop(0.55, withAlpha(palette.primary || "#f0e1b1", 0.16 + alpha * 0.18, "240, 225, 177"));
+      shell.addColorStop(1, withAlpha(palette.secondary || "#9eaed2", 0, "158, 174, 210"));
+      ctx.fillStyle = shell;
+      ctx.beginPath();
+      ctx.arc(0, 0, effect.radius + 18, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = withAlpha(palette.primary || "#f0e1b1", 0.7 + alpha * 0.18, "240, 225, 177");
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(0, 0, effect.radius * pulse, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = withAlpha(palette.accent || "#fff6de", 0.42 + alpha * 0.22, "255, 246, 222");
+      ctx.lineWidth = 2;
+      ctx.setLineDash([10, 8]);
+      ctx.beginPath();
+      ctx.arc(0, 0, effect.radius + 10, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
     function drawChainLightningEffect(ctx, effect) {
       if (!effect.currentTarget) return;
       const palette = effect.palette || {};
@@ -441,8 +489,111 @@
       ctx.restore();
     }
 
+    function drawBossLaneTelegraph(ctx, effect) {
+      const alpha = clamp(effect.time / Math.max(0.01, effect.duration), 0, 1);
+      ctx.save();
+      ctx.strokeStyle = effect.resolved
+        ? withAlpha("#ffcc9b", 0.16 + alpha * 0.12, "255, 204, 155")
+        : withAlpha("#ff7a5b", 0.22 + alpha * 0.24, "255, 122, 91");
+      ctx.lineWidth = effect.width;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(effect.startX, effect.startY);
+      ctx.lineTo(effect.endX, effect.endY);
+      ctx.stroke();
+      ctx.strokeStyle = effect.resolved
+        ? withAlpha("#fff2d7", 0.14 + alpha * 0.08, "255, 242, 215")
+        : withAlpha("#fff1d0", 0.36 + alpha * 0.24, "255, 241, 208");
+      ctx.lineWidth = Math.max(2, effect.width * 0.14);
+      ctx.beginPath();
+      ctx.moveTo(effect.startX, effect.startY);
+      ctx.lineTo(effect.endX, effect.endY);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawBossZoneTelegraph(ctx, effect) {
+      const alpha = clamp(effect.time / Math.max(0.01, effect.duration), 0, 1);
+      ctx.save();
+      ctx.fillStyle = effect.resolved
+        ? withAlpha("#ff915e", 0.08 + alpha * 0.04, "255, 145, 94")
+        : withAlpha("#ff714d", 0.08 + alpha * 0.1, "255, 113, 77");
+      ctx.beginPath();
+      ctx.arc(effect.x, effect.y, effect.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = effect.resolved
+        ? withAlpha("#ffd1a2", 0.26 + alpha * 0.08, "255, 209, 162")
+        : withAlpha("#ffd6ab", 0.48 + alpha * 0.22, "255, 214, 171");
+      ctx.lineWidth = effect.resolved ? 2.2 : 3.2;
+      ctx.beginPath();
+      ctx.arc(effect.x, effect.y, effect.radius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawBossHazardZone(ctx, effect) {
+      const alpha = clamp(effect.time / Math.max(0.01, effect.duration), 0, 1);
+      const phase = state.time * 3.2;
+      ctx.save();
+      const gradient = ctx.createRadialGradient(effect.x, effect.y, effect.radius * 0.2, effect.x, effect.y, effect.radius + 10);
+      gradient.addColorStop(0, withAlpha("#ffcf9c", 0.05 + alpha * 0.06, "255, 207, 156"));
+      gradient.addColorStop(0.58, withAlpha("#ff8f57", 0.12 + alpha * 0.1, "255, 143, 87"));
+      gradient.addColorStop(1, withAlpha("#6f1421", 0.02 + alpha * 0.12, "111, 20, 33"));
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(effect.x, effect.y, effect.radius + Math.sin(phase) * 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = withAlpha("#ffd7a6", 0.2 + alpha * 0.18, "255, 215, 166");
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.arc(effect.x, effect.y, effect.radius - 4, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawBossRingTelegraph(ctx, effect) {
+      const alpha = clamp(effect.time / Math.max(0.01, effect.duration), 0, 1);
+      ctx.save();
+      ctx.translate(effect.x, effect.y);
+      ctx.strokeStyle = withAlpha("#ff8f61", 0.4 + alpha * 0.22, "255, 143, 97");
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(0, 0, effect.innerRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, 0, effect.outerRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = withAlpha("#ffe1bc", 0.34 + alpha * 0.18, "255, 225, 188");
+      ctx.lineWidth = 2;
+      const safeRadius = effect.safeMode === "inner" ? effect.innerRadius : effect.outerRadius;
+      ctx.beginPath();
+      ctx.arc(0, 0, safeRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawBossConeTelegraph(ctx, effect) {
+      const alpha = clamp(effect.time / Math.max(0.01, effect.duration), 0, 1);
+      ctx.save();
+      ctx.fillStyle = withAlpha("#ff9e74", 0.08 + alpha * 0.08, "255, 158, 116");
+      ctx.beginPath();
+      ctx.moveTo(effect.x, effect.y);
+      ctx.arc(effect.x, effect.y, effect.radius, effect.angle - effect.spread * 0.5, effect.angle + effect.spread * 0.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = withAlpha("#ffe0b8", 0.28 + alpha * 0.16, "255, 224, 184");
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(effect.x, effect.y);
+      ctx.arc(effect.x, effect.y, effect.radius, effect.angle - effect.spread * 0.5, effect.angle + effect.spread * 0.5);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+    }
+
     function drawActiveEffects(ctx) {
       state.activeEffects.forEach((effect) => {
+        if (effect.startDelay > 0) return;
         if (effect.kind === "greatsword-field") {
           drawGreatswordField(ctx, effect);
         } else if (effect.kind === "flame-zone") {
@@ -451,8 +602,20 @@
           drawGuardCounterEffect(ctx, effect);
         } else if (effect.kind === "bulwark-shell") {
           drawBulwarkShellEffect(ctx, effect);
+        } else if (effect.kind === "bulwark-last-stand") {
+          drawBulwarkLastStandEffect(ctx, effect);
         } else if (effect.kind === "chain-lightning-storm") {
           drawChainLightningEffect(ctx, effect);
+        } else if (effect.kind === "boss-lane-telegraph") {
+          drawBossLaneTelegraph(ctx, effect);
+        } else if (effect.kind === "boss-zone-telegraph") {
+          drawBossZoneTelegraph(ctx, effect);
+        } else if (effect.kind === "boss-hazard-zone") {
+          drawBossHazardZone(ctx, effect);
+        } else if (effect.kind === "boss-ring-telegraph") {
+          drawBossRingTelegraph(ctx, effect);
+        } else if (effect.kind === "boss-cone-telegraph") {
+          drawBossConeTelegraph(ctx, effect);
         }
       });
     }
@@ -485,8 +648,9 @@
       if (!skill) return;
       const routeVfx = getSkillRouteVfx("sword", skill);
       const palette = routeVfx.palette || {};
-      const orbitCount = Math.max(1, routeVfx.auto?.orbitCount || 3);
-      const orbitRadius = routeVfx.auto?.orbitRadius || 18;
+      const capstoneRoute = skill.capstone || null;
+      const orbitCount = Math.max(1, (routeVfx.auto?.orbitCount || 3) + (capstoneRoute === "swarm" ? 3 : 0));
+      const orbitRadius = (routeVfx.auto?.orbitRadius || 18) + (capstoneRoute === "swarm" ? 6 : capstoneRoute === "greatsword" ? 2 : 0);
       const readyRatio = clamp(1 - (skill.timer || 0) / Math.max(0.0001, skill.cooldown || 1), 0, 1);
       ctx.save();
       ctx.translate(state.player.x, state.player.y);
@@ -495,13 +659,13 @@
         const radius = orbitRadius + (routeVfx.auto?.style === "greatsword" ? (i % 2) * 6 : Math.sin(state.time * 2 + i) * 2);
         const x = Math.cos(angle) * radius;
         const y = Math.sin(angle) * radius;
-        ctx.globalAlpha = 0.08 + readyRatio * 0.22 + (routeVfx.auto?.style === "greatsword" ? 0.08 : 0);
+        ctx.globalAlpha = 0.08 + readyRatio * 0.22 + (routeVfx.auto?.style === "greatsword" ? 0.08 : 0) + (capstoneRoute ? 0.08 : 0);
         drawBladeGlyph(
           ctx,
           x,
           y,
           angle + Math.PI / 2,
-          (routeVfx.auto?.projectileScale || 1) * (routeVfx.auto?.style === "greatsword" ? 0.88 : 0.62),
+          (routeVfx.auto?.projectileScale || 1) * (routeVfx.auto?.style === "greatsword" ? 0.88 : 0.62) * (capstoneRoute === "greatsword" ? 1.12 : capstoneRoute === "swarm" ? 1.05 : 1),
           palette.primary || "#efe2a3",
           palette.secondary || "#a7884b",
         );
@@ -516,9 +680,10 @@
       const routeVfx = getSkillRouteVfx("flame", skill);
       const palette = routeVfx.palette || {};
       const routeStyle = routeVfx.auto?.pulseStyle || "meteor";
+      const capstoneRoute = skill.capstone || null;
       const radius = skill.radius;
       const phase = state.time * 2.6;
-      const tongues = routeStyle === "zone" ? 20 : 14;
+      const tongues = routeStyle === "zone" ? 20 + (capstoneRoute === "zone" ? 4 : 0) : 14 + (capstoneRoute === "meteor" ? 2 : 0);
       ctx.save();
       ctx.translate(state.player.x, state.player.y);
       const heat = ctx.createRadialGradient(0, 0, radius * 0.2, 0, 0, radius + 24);
@@ -569,12 +734,31 @@
         ctx.arc(0, 0, Math.max(12, radius - 2), 0, Math.PI * 2);
         ctx.stroke();
         ctx.setLineDash([]);
+        if (capstoneRoute === "zone") {
+          ctx.strokeStyle = withAlpha(palette.primary || "#ffd48e", 0.42, "255, 212, 142");
+          ctx.lineWidth = 2.4;
+          ctx.beginPath();
+          ctx.arc(0, 0, radius + 12 + Math.sin(phase) * 2, 0, Math.PI * 2);
+          ctx.stroke();
+        }
       } else {
         ctx.strokeStyle = withAlpha(palette.secondary || "#ff5e2a", 0.48, "255, 94, 42");
         ctx.lineWidth = 5.5;
         ctx.beginPath();
         ctx.arc(0, 0, Math.max(12, radius - 4), 0, Math.PI * 2);
         ctx.stroke();
+        if (capstoneRoute === "meteor") {
+          const core = radius * 0.58;
+          ctx.fillStyle = withAlpha(palette.accent || "#fff0bf", 0.14, "255, 240, 191");
+          ctx.beginPath();
+          ctx.arc(0, 0, core, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = withAlpha(palette.primary || "#ffc278", 0.62, "255, 194, 120");
+          ctx.lineWidth = 3.4;
+          ctx.beginPath();
+          ctx.arc(0, 0, core, 0, Math.PI * 2);
+          ctx.stroke();
+        }
       }
       ctx.restore();
     }
@@ -585,6 +769,7 @@
       const routeVfx = getSkillRouteVfx("guard", guard);
       const palette = routeVfx.palette || {};
       const routeStyle = routeVfx.auto?.style || "bulwark";
+      const capstoneRoute = guard.capstone || null;
       const shieldRatio = clamp(guard.shield / Math.max(1, guard.maxShield), 0, 1);
       const radius = state.player.radius + 8;
       const phase = state.time * 1.8;
@@ -601,7 +786,7 @@
       ctx.fill();
 
       ctx.strokeStyle = withAlpha(palette.primary || "#d6e8ff", 0.45 + shieldRatio * 0.35, "214, 232, 255");
-      ctx.lineWidth = routeStyle === "bulwark" ? 4.8 : 3.2;
+      ctx.lineWidth = (routeStyle === "bulwark" ? 4.8 : 3.2) + (capstoneRoute === routeStyle ? 1 : 0);
       ctx.beginPath();
       ctx.arc(0, 0, radius, 0, Math.PI * 2);
       ctx.stroke();
@@ -622,6 +807,17 @@
           ctx.lineTo(Math.cos(angle) * (radius + 12), Math.sin(angle) * (radius + 12));
           ctx.stroke();
         }
+        if (capstoneRoute === "counter") {
+          ctx.strokeStyle = withAlpha(palette.accent || "#f6fbff", 0.42 + shieldRatio * 0.22, "246, 251, 255");
+          ctx.lineWidth = 1.8;
+          for (let i = 0; i < 8; i += 1) {
+            const angle = phase * 0.42 + (Math.PI * 2 * i) / 8;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(angle) * (radius - 2), Math.sin(angle) * (radius - 2));
+            ctx.lineTo(Math.cos(angle) * (radius + 16), Math.sin(angle) * (radius + 16));
+            ctx.stroke();
+          }
+        }
       } else {
         ctx.beginPath();
         ctx.arc(0, 0, radius + 5, phase * 0.5, phase * 0.5 + Math.PI * 1.22);
@@ -629,11 +825,100 @@
         ctx.beginPath();
         ctx.arc(0, 0, radius + 5, phase * 0.5 + Math.PI, phase * 0.5 + Math.PI * 2.08);
         ctx.stroke();
+        if (capstoneRoute === "bulwark") {
+          ctx.strokeStyle = withAlpha(palette.primary || "#f0e1b1", 0.38 + shieldRatio * 0.18, "240, 225, 177");
+          ctx.lineWidth = 2.4;
+          ctx.beginPath();
+          ctx.arc(0, 0, radius + 11, 0, Math.PI * 2);
+          ctx.stroke();
+        }
       }
       ctx.restore();
     }
 
+    function getStatus(name) {
+      return state.statuses.find((status) => status.name === name) || null;
+    }
+
+    function drawPathAura(ctx) {
+      const qingming = getStatus("清明");
+      const linghu = getStatus("灵护");
+      const tianxi = getStatus("天息");
+      const sharan = getStatus("煞燃");
+      const mochi = getStatus("魔驰");
+      const mofei = getStatus("魔沸");
+      const whiteWeight = (qingming ? 0.22 : 0) + (linghu ? 0.34 : 0) + (tianxi ? 0.48 : 0) + (state.whitePath.full ? 0.22 : 0);
+      const blackWeight = (sharan ? 0.22 : 0) + (mochi ? 0.34 : 0) + (mofei ? 0.5 : 0) + (state.blackPath.full ? 0.22 : 0);
+      if (whiteWeight <= 0 && blackWeight <= 0) return;
+
+      ctx.save();
+      ctx.translate(state.player.x, state.player.y);
+      const baseRadius = state.player.radius + 8;
+
+      if (whiteWeight > 0) {
+        const whitePulse = 0.92 + Math.sin(state.time * 2.6) * 0.05;
+        const whiteRadius = baseRadius + 14 + whiteWeight * 26;
+        const glow = ctx.createRadialGradient(0, 0, baseRadius * 0.35, 0, 0, whiteRadius + 22);
+        glow.addColorStop(0, `rgba(244, 241, 225, ${0.05 + whiteWeight * 0.08})`);
+        glow.addColorStop(0.5, `rgba(210, 227, 241, ${0.08 + whiteWeight * 0.14})`);
+        glow.addColorStop(1, "rgba(210, 227, 241, 0)");
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(0, 0, whiteRadius + 18, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = `rgba(242, 235, 212, ${0.24 + whiteWeight * 0.42})`;
+        ctx.lineWidth = 2.6;
+        ctx.beginPath();
+        ctx.arc(0, 0, whiteRadius * whitePulse, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = `rgba(196, 220, 240, ${0.18 + whiteWeight * 0.34})`;
+        ctx.lineWidth = 1.4;
+        for (let i = 0; i < 3; i += 1) {
+          const angle = state.time * 0.45 + (Math.PI * 2 * i) / 3;
+          ctx.beginPath();
+          ctx.arc(0, 0, whiteRadius + 6 + i * 5, angle, angle + Math.PI * 0.72);
+          ctx.stroke();
+        }
+      }
+
+      if (blackWeight > 0) {
+        const blackRadius = baseRadius + 12 + blackWeight * 28;
+        const heat = ctx.createRadialGradient(0, 0, baseRadius * 0.3, 0, 0, blackRadius + 20);
+        heat.addColorStop(0, `rgba(255, 132, 70, ${0.06 + blackWeight * 0.1})`);
+        heat.addColorStop(0.55, `rgba(124, 56, 96, ${0.08 + blackWeight * 0.16})`);
+        heat.addColorStop(1, "rgba(124, 56, 96, 0)");
+        ctx.fillStyle = heat;
+        ctx.beginPath();
+        ctx.arc(0, 0, blackRadius + 16, 0, Math.PI * 2);
+        ctx.fill();
+
+        const sparks = 10;
+        for (let i = 0; i < sparks; i += 1) {
+          const angle = state.time * 1.1 + (Math.PI * 2 * i) / sparks;
+          const inner = blackRadius - 8 + (i % 2) * 2;
+          const outer = blackRadius + 10 + (i % 3) * 4;
+          ctx.strokeStyle = `rgba(255, 156, 82, ${0.18 + blackWeight * 0.34})`;
+          ctx.lineWidth = 1.7;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(angle) * inner, Math.sin(angle) * inner);
+          ctx.lineTo(Math.cos(angle) * outer, Math.sin(angle) * outer);
+          ctx.stroke();
+        }
+
+        ctx.strokeStyle = `rgba(255, 196, 116, ${0.22 + blackWeight * 0.26})`;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.arc(0, 0, blackRadius * (0.95 + Math.sin(state.time * 3.4) * 0.04), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
     function drawPlayer(ctx) {
+      drawPathAura(ctx);
       drawSwordOrbitHints(ctx);
       drawFlameAura(ctx);
       drawGuardAura(ctx);
@@ -643,6 +928,39 @@
       ctx.fill();
     }
 
+    function getExecuteThreshold(target) {
+      const mochi = getStatus("魔驰");
+      if (!mochi?.effects?.execute) return 0;
+      if (target.type === "boss") return mochi.effects.execute.bossThreshold || 0;
+      if (target.isMiniBoss || target.type === "elite") return mochi.effects.execute.eliteThreshold || 0;
+      return mochi.effects.execute.normalThreshold || 0;
+    }
+
+    function drawExecuteMarker(ctx, target) {
+      const threshold = getExecuteThreshold(target);
+      if (!threshold) return;
+      const hpRatio = target.hp / Math.max(1, target.maxHp);
+      if (hpRatio > threshold) return;
+      const pulse = 0.88 + Math.sin(state.time * 8) * 0.08;
+      const radius = (target.radius + 10) * pulse;
+      ctx.save();
+      ctx.translate(target.x, target.y);
+      ctx.strokeStyle = `rgba(255, 118, 72, ${target.type === "boss" ? 0.78 : 0.9})`;
+      ctx.lineWidth = target.type === "boss" ? 3 : 2.4;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      const marks = target.type === "boss" ? 6 : 4;
+      for (let i = 0; i < marks; i += 1) {
+        const angle = (Math.PI * 2 * i) / marks + state.time * 0.28;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(angle) * (radius - 6), Math.sin(angle) * (radius - 6));
+        ctx.lineTo(Math.cos(angle) * (radius + 8), Math.sin(angle) * (radius + 8));
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     function drawEnemies(ctx) {
       state.enemies.forEach((enemy) => {
         ctx.fillStyle = enemy.color === "white" ? COLORS.enemyWhite : COLORS.enemyBlack;
@@ -650,6 +968,7 @@
         ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
         ctx.fill();
         drawTargetStatusFx(ctx, enemy, Math.max(0.9, enemy.radius / 16));
+        drawExecuteMarker(ctx, enemy);
         ctx.fillStyle = "rgba(255,255,255,0.15)";
         ctx.fillRect(enemy.x - enemy.radius, enemy.y - enemy.radius - 10, enemy.radius * 2, 4);
         ctx.fillStyle = "#89d3b4";
@@ -670,10 +989,27 @@
       ctx.arc(boss.x, boss.y, boss.radius + 10, 0, Math.PI * 2);
       ctx.stroke();
       drawTargetStatusFx(ctx, boss, Math.max(1.2, boss.radius / 18));
+      drawExecuteMarker(ctx, boss);
       ctx.fillStyle = "rgba(255,255,255,0.12)";
       ctx.fillRect(200, 18, 560, 12);
       ctx.fillStyle = "#d97878";
       ctx.fillRect(200, 18, 560 * (boss.hp / boss.maxHp), 12);
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.font = "14px sans-serif";
+      ctx.textAlign = "left";
+      ctx.fillText(`${boss.name} · ${boss.phaseNames?.[boss.phase - 1] || `阶段${boss.phase}`}`, 200, 14);
+      if (boss.intentLabel) {
+        const tag = boss.intentCounterable ? "可反制" : "不可反制";
+        ctx.fillStyle = boss.intentCounterable ? "rgba(255,232,178,0.95)" : "rgba(255,205,183,0.95)";
+        ctx.fillText(`${boss.intentLabel} · ${tag}`, 200, 46);
+      }
+      if (boss.exposedTimer > 0) {
+        ctx.strokeStyle = "rgba(255,240,196,0.78)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(boss.x, boss.y, boss.radius + 18 + Math.sin(state.time * 9) * 2, 0, Math.PI * 2);
+        ctx.stroke();
+      }
     }
 
     function drawSwordProjectile(ctx, projectile) {
@@ -757,6 +1093,31 @@
         ctx.fill();
       });
       state.enemyProjectiles.forEach((projectile) => {
+        if (projectile.fromBoss && projectile.counterable !== false) {
+          ctx.fillStyle = "rgba(255, 221, 166, 0.96)";
+          ctx.strokeStyle = "rgba(255, 247, 212, 0.85)";
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(projectile.x, projectile.y, projectile.radius + 1, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          return;
+        }
+        if (projectile.fromBoss && projectile.counterable === false) {
+          ctx.save();
+          ctx.translate(projectile.x, projectile.y);
+          ctx.rotate(state.time * 2.4);
+          ctx.fillStyle = "rgba(201, 97, 97, 0.96)";
+          ctx.beginPath();
+          ctx.moveTo(projectile.radius + 3, 0);
+          ctx.lineTo(0, -projectile.radius - 3);
+          ctx.lineTo(-projectile.radius - 3, 0);
+          ctx.lineTo(0, projectile.radius + 3);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+          return;
+        }
         ctx.fillStyle = "#c66161";
         ctx.beginPath();
         ctx.arc(projectile.x, projectile.y, projectile.radius, 0, Math.PI * 2);
@@ -812,10 +1173,11 @@
 
     function drawThunderstormPulse(ctx, pulseItem, alpha) {
       const palette = pulseItem.palette || {};
+      const capstoneStorm = (pulseItem.heavyFirstHitMult || 1) > 1;
       ctx.save();
       const ringPulse = 0.92 + Math.sin(pulseItem.time * 5.2) * 0.04;
       ctx.strokeStyle = withAlpha(palette.secondary || "#7cc4ff", alpha * 0.62, "124, 196, 255");
-      ctx.lineWidth = 3.8;
+      ctx.lineWidth = 3.8 + (capstoneStorm ? 0.8 : 0);
       ctx.beginPath();
       ctx.arc(pulseItem.x, pulseItem.y, pulseItem.radius * ringPulse, 0, Math.PI * 2);
       ctx.stroke();
@@ -858,6 +1220,14 @@
       ctx.beginPath();
       ctx.arc(pulseItem.x, pulseItem.y, pulseItem.radius * 0.56, 0, Math.PI * 2);
       ctx.stroke();
+      if (capstoneStorm) {
+        ctx.strokeStyle = withAlpha(palette.accent || "#f4f8ff", alpha * 0.34, "244, 248, 255");
+        ctx.lineWidth = 2;
+        ctx.setLineDash([14, 10]);
+        ctx.beginPath();
+        ctx.arc(pulseItem.x, pulseItem.y, pulseItem.radius * 0.82, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       ctx.setLineDash([]);
       ctx.restore();
     }

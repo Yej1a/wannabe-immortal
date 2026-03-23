@@ -65,6 +65,42 @@
     };
   }
 
+  function createDestinyRuntimeState() {
+    return {
+      seq: 0,
+      log: [],
+      whitePointTotal: 0,
+      blackPointTotal: 0,
+      hpBand: "safe",
+      activeWhiteStatuses: [],
+      activeBlackStatuses: [],
+      whiteStability: {
+        active: false,
+        stableTime: 0,
+        lifeLossCount: 0,
+        firstKillRegistered: false,
+        repairByStatus: {},
+      },
+      protectiveLayers: {
+        barrier: {
+          active: false,
+          value: 0,
+        },
+        guardShield: {
+          active: false,
+          value: 0,
+        },
+      },
+      releaseSessions: {
+        white: null,
+        black: null,
+      },
+      highValueDrops: {},
+      highValueDropSerial: 0,
+      skillRewriteState: {},
+    };
+  }
+
   function createState(metaState, applyDestinyBonuses, width, height) {
     const hpBonus = (metaState.upgrades.hp1 || 0) * META.upgrades.hp1.effectPerLevel;
     const xpGainMult = 1 + (metaState.upgrades.xp1 || 0) * META.upgrades.xp1.effectPerLevel;
@@ -151,11 +187,15 @@
       blackMomentumCooldown: 0,
       branchWindowCounter: 0,
       pendingFreeShopRefreshes: 0,
+      pendingForcedWhiteOffers: 0,
+      pendingWhiteDestinyDiscount: 0,
       shopFreeRefreshes: 0,
       shopDestinyOffers: [],
       dandingTriggerCount: 0,
       pendingActiveSacrificeBoost: 0,
+      debugSpawnSuppressed: false,
       routeShiftNotice: "",
+      destinyRuntime: createDestinyRuntimeState(),
     };
   }
 
@@ -165,6 +205,7 @@
     loadMetaState,
     saveMetaState,
     makePathState,
+    createDestinyRuntimeState,
     createState,
   };
 })(window);

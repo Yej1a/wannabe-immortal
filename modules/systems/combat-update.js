@@ -26,6 +26,9 @@
       markTargetHitFx,
       addXp,
       fillPath,
+      onDropCollected,
+      onHpChanged,
+      onStatusExpired,
       maybeOpenPendingLevelUp,
       maybeHandlePostBossInfusion,
       openDestinyOffer,
@@ -75,6 +78,305 @@
       return null;
     }
 
+    function getBossPhaseConfig(boss = state.boss) {
+      if (!boss?.config?.phases?.length) return null;
+      return boss.config.phases[Math.min((boss.phase || 1) - 1, boss.config.phases.length - 1)] || null;
+    }
+
+    function getBossSkillConfig(boss, skillId) {
+      return boss?.config?.skills?.[skillId] || null;
+    }
+
+    function clearBossIntent(boss) {
+      if (!boss) return;
+      boss.intent = null;
+      boss.intentLabel = "";
+      boss.intentCategory = null;
+      boss.intentCounterable = false;
+    }
+
+    function pushBossVisualPulse(x, y, radius, kind = "burst", extra = {}) {
+      state.pulses.push({
+        x,
+        y,
+        radius,
+        damage: 0,
+        kind,
+        time: 0.24,
+        duration: 0.24,
+        hit: new Set(),
+        affectsBoss: false,
+        fromBoss: true,
+        ...extra,
+      });
+    }
+
+    function clampArenaPoint(x, y, margin = 24) {
+      return {
+        x: clamp(x, margin, WIDTH - margin),
+        y: clamp(y, margin, HEIGHT - margin),
+      };
+    }
+
+    function queueBossLaneStrike({
+      boss,
+      skillId,
+      skill,
+      angle,
+      width,
+      length,
+      startDelay = 0,
+    }) {
+      const halfLength = length * 0.5;
+      state.activeEffects.push({
+        kind: "boss-lane-telegraph",
+        x: boss.x,
+        y: boss.y,
+        startX: boss.x - Math.cos(angle) * halfLength,
+        startY: boss.y - Math.sin(angle) * halfLength,
+        endX: boss.x + Math.cos(angle) * halfLength,
+        endY: boss.y + Math.sin(angle) * halfLength,
+        width,
+        time: skill.windup + 0.18,
+        duration: skill.windup + 0.18,
+        windup: skill.windup,
+        damage: boss.damage * skill.damageMult,
+        resolved: false,
+        startDelay,
+        fromBoss: true,
+        skillId,
+        category: skill.category,
+      });
+    }
+
+    function queueBossZoneBurst({
+      boss,
+      skillId,
+      skill,
+      x,
+      y,
+      startDelay = 0,
+      hazardDuration = 0,
+      hazardTick = 0.5,
+      hazardDamage = 0,
+    }) {
+      const point = clampArenaPoint(x, y, skill.radius + 8);
+      state.activeEffects.push({
+        kind: "boss-zone-telegraph",
+        x: point.x,
+        y: point.y,
+        radius: skill.radius,
+        time: skill.windup + 0.2,
+        duration: skill.windup + 0.2,
+        windup: skill.windup,
+        damage: boss.damage * skill.damageMult,
+        resolved: false,
+        startDelay,
+        fromBoss: true,
+        skillId,
+        category: skill.category,
+        hazardDuration,
+        hazardTick,
+        hazardDamage,
+      });
+    }
+
+    function queueBossRingCollapse(boss, skill, safeMode) {
+      state.activeEffects.push({
+        kind: "boss-ring-telegraph",
+        x: boss.x,
+        y: boss.y,
+        innerRadius: skill.innerRadius,
+        outerRadius: skill.outerRadius,
+        safeMode,
+        time: skill.windup + 0.24,
+        duration: skill.windup + 0.24,
+        windup: skill.windup,
+        damage: boss.damage * skill.damageMult,
+        resolved: false,
+        fromBoss: true,
+        skillId: "ringCollapse",
+        category: skill.category,
+      });
+    }
+
+    function queueBossConeTelegraph(boss, skill, angle, spread, radius) {
+      state.activeEffects.push({
+        kind: "boss-cone-telegraph",
+        x: boss.x,
+        y: boss.y,
+        angle,
+        spread,
+        radius,
+        time: skill.windup + 0.1,
+        duration: skill.windup + 0.1,
+        windup: skill.windup,
+        fromBoss: true,
+        skillId: boss.lastSkillId,
+        category: skill.category,
+      });
+    }
+
+    function spawnBossProjectileFan(boss, skill, projectileCount, spread, speed, radius) {
+      const dx = state.player.x - boss.x;
+      const dy = state.player.y - boss.y;
+      const baseAngle = Math.atan2(dy, dx);
+      for (let i = 0; i < projectileCount; i += 1) {
+        const angle = baseAngle + (i - (projectileCount - 1) / 2) * spread;
+        state.enemyProjectiles.push({
+          kind: "boss-shot",
+          fromBoss: true,
+          counterable: skill.category === "counterable",
+          x: boss.x,
+          y: boss.y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          radius,
+          damage: boss.damage * skill.damageMult,
+          life: skill.projectileLife || 4,
+          routeStyle: skill.category === "counterable" ? "counterable" : "uncounterable",
+        });
+      }
+    }
+
+    function startBossSkill(boss, skillId) {
+      const skill = getBossSkillConfig(boss, skillId);
+      if (!skill) return;
+      boss.lastSkillId = skillId;
+      let resolveDelay = 0;
+      boss.intent = {
+        skillId,
+        timer: skill.windup,
+        moveMult: skill.category === "counterable" ? 0.26 : 0.18,
+      };
+      boss.intentLabel = skill.name;
+      boss.intentCategory = skill.category;
+      boss.intentCounterable = skill.category === "counterable";
+      const dx = state.player.x - boss.x;
+      const dy = state.player.y - boss.y;
+      const angleToPlayer = Math.atan2(dy, dx);
+      if (skill.kind === "lane-sweep") {
+        const laneCount = skill.laneCount + (boss.phase >= 2 && boss.config.id === "route-pressure" ? 1 : 0);
+        resolveDelay = Math.max(0, laneCount - 1) * (skill.sequentialDelay || 0);
+        for (let i = 0; i < laneCount; i += 1) {
+          const angle = angleToPlayer + (i - (laneCount - 1) / 2) * skill.angleSpread;
+          queueBossLaneStrike({
+            boss,
+            skillId,
+            skill,
+            angle,
+            width: skill.laneWidth,
+            length: skill.laneLength,
+            startDelay: i * skill.sequentialDelay,
+          });
+        }
+      } else if (skill.kind === "lane-cross") {
+        resolveDelay = skill.sequentialDelay || 0.16;
+        const baseAngle = angleToPlayer + (boss.config.id === "endgame-truth" && boss.phase >= 2 ? Math.PI * 0.25 : 0);
+        queueBossLaneStrike({
+          boss,
+          skillId,
+          skill,
+          angle: baseAngle,
+          width: skill.laneWidth,
+          length: skill.laneLength,
+          startDelay: 0,
+        });
+        queueBossLaneStrike({
+          boss,
+          skillId,
+          skill,
+          angle: baseAngle + Math.PI / 2,
+          width: skill.laneWidth,
+          length: skill.laneLength,
+          startDelay: skill.sequentialDelay || 0.16,
+        });
+      } else if (skill.kind === "focus-burst" || skill.kind === "seal-zones") {
+        const count = skill.zoneCount + (boss.config.id === "endgame-truth" ? boss.phase - 1 : 0);
+        resolveDelay = Math.max(0, count - 1) * (skill.sequentialDelay || 0);
+        const baseAngle = state.time * 1.7;
+        for (let i = 0; i < count; i += 1) {
+          const angle = baseAngle + (Math.PI * 2 * i) / count;
+          const offset = i === 0 ? 0 : skill.spread;
+          queueBossZoneBurst({
+            boss,
+            skillId,
+            skill,
+            x: state.player.x + Math.cos(angle) * offset,
+            y: state.player.y + Math.sin(angle) * offset,
+            startDelay: i * (skill.sequentialDelay || 0),
+            hazardDuration: skill.hazardDuration || 0,
+            hazardTick: skill.hazardTick || 0.5,
+            hazardDamage: boss.damage * (skill.hazardDamageMult || 0),
+          });
+        }
+      } else if (skill.kind === "ring-collapse") {
+        boss.ringMode = boss.ringMode === "outer" ? "inner" : "outer";
+        queueBossRingCollapse(boss, skill, boss.ringMode);
+      } else if (skill.kind === "counter-fan") {
+        const projectileCount = skill.projectileCount + (boss.config.id === "endgame-truth" ? boss.phase - 1 : 0);
+        queueBossConeTelegraph(
+          boss,
+          skill,
+          angleToPlayer,
+          Math.max(0.16, skill.spread * (projectileCount * 0.7)),
+          160,
+        );
+      } else if (skill.kind === "escort-call") {
+        state.activeEffects.push({
+          kind: "boss-cone-telegraph",
+          x: boss.x,
+          y: boss.y,
+          angle: angleToPlayer,
+          spread: 1.2,
+          radius: skill.pulseRadius + 24,
+          time: skill.windup,
+          duration: skill.windup,
+          windup: skill.windup,
+          fromBoss: true,
+          skillId,
+          category: skill.category,
+        });
+      }
+      boss.intent.timer = skill.windup + resolveDelay;
+    }
+
+    function resolveBossSkill(boss) {
+      const intent = boss.intent;
+      if (!intent) return;
+      const skill = getBossSkillConfig(boss, intent.skillId);
+      const phaseConfig = getBossPhaseConfig(boss);
+      if (!skill) {
+        clearBossIntent(boss);
+        return;
+      }
+      if (skill.kind === "escort-call") {
+        const pairCount = skill.summonPairs + (boss.phase >= 2 ? 1 : 0) + (boss.phase >= 3 ? 1 : 0);
+        const summonTypes = ["ranged", "charger"];
+        for (let i = 0; i < pairCount; i += 1) {
+          const typeId = summonTypes[i % summonTypes.length];
+          spawnEnemy(typeId, i % 2 === 0 ? "white" : "black");
+        }
+        if (distance(boss, state.player) <= skill.pulseRadius + state.player.radius) {
+          hitPlayer(boss.damage * skill.damageMult, boss);
+        }
+        pushBossVisualPulse(boss.x, boss.y, skill.pulseRadius, "burst");
+      } else if (skill.kind === "counter-fan") {
+        const projectileCount = skill.projectileCount + (boss.config.id === "endgame-truth" ? boss.phase - 1 : 0);
+        spawnBossProjectileFan(
+          boss,
+          skill,
+          projectileCount,
+          skill.spread,
+          skill.projectileSpeed + (boss.phase - 1) * 14,
+          skill.projectileRadius,
+        );
+      }
+      boss.exposedTimer = Math.max(boss.exposedTimer || 0, skill.opening || 0);
+      boss.attackTimer = Math.max(phaseConfig?.cooldown || 0.7, skill.recovery || 0.2);
+      clearBossIntent(boss);
+    }
+
     function updatePlayer(dt) {
       const moveX = ((keys.d || keys.arrowright) ? 1 : 0) - ((keys.a || keys.arrowleft) ? 1 : 0);
       const moveY = ((keys.s || keys.arrowdown) ? 1 : 0) - ((keys.w || keys.arrowup) ? 1 : 0);
@@ -92,8 +394,17 @@
 
     function updateActiveEffects(dt) {
       state.activeEffects = state.activeEffects.filter((effect) => {
+        if (effect.startDelay > 0) {
+          effect.startDelay = Math.max(0, effect.startDelay - dt);
+          return true;
+        }
         effect.time -= dt;
+        const elapsed = (effect.duration || 0) - effect.time;
         if (effect.kind === "bulwark-shell") {
+          effect.x = state.player.x;
+          effect.y = state.player.y;
+        }
+        if (effect.kind === "bulwark-last-stand") {
           effect.x = state.player.x;
           effect.y = state.player.y;
         }
@@ -201,7 +512,7 @@
               if (distance(target, effect) > effect.radius + target.radius) return;
               markTargetHitFx(target, "flame", effect.routeStyle || "zone", effect.palette || null, 0.3, 0.94);
               dealDamage(target, effect.damage, "flame-zone");
-              target.burn = Math.max(target.burn || 0, effect.burnDuration);
+              target.burn = Math.max(target.burn || 0, effect.burnDuration || 1.7);
               target.slowUntil = Math.max(target.slowUntil || 0, state.time + effect.tickInterval + 0.08);
               target.slowMult = Math.min(target.slowMult || 1, 1 - effect.slow);
               effect.hitCooldowns.set(target, state.time + effect.tickInterval * 0.88);
@@ -213,8 +524,102 @@
           effect.y = state.player.y;
           effect.shockCooldown = Math.max(0, effect.shockCooldown - dt);
         }
+        if (effect.kind === "boss-lane-telegraph" && !effect.resolved && elapsed >= effect.windup) {
+          effect.resolved = true;
+          const distToLane = distancePointToSegment(state.player, { x: effect.startX, y: effect.startY }, { x: effect.endX, y: effect.endY });
+          if (distToLane <= effect.width * 0.5 + state.player.radius) {
+            hitPlayer(effect.damage, { type: "boss", skillId: effect.skillId, category: effect.category });
+          }
+          pushBossVisualPulse((effect.startX + effect.endX) * 0.5, (effect.startY + effect.endY) * 0.5, effect.width * 0.72, "burst", {
+            angle: Math.atan2(effect.endY - effect.startY, effect.endX - effect.startX),
+          });
+        }
+        if (effect.kind === "boss-zone-telegraph" && !effect.resolved && elapsed >= effect.windup) {
+          effect.resolved = true;
+          if (distance(effect, state.player) <= effect.radius + state.player.radius) {
+            hitPlayer(effect.damage, { type: "boss", skillId: effect.skillId, category: effect.category });
+          }
+          pushBossVisualPulse(effect.x, effect.y, effect.radius, "burst");
+          if (effect.hazardDuration > 0) {
+            state.activeEffects.push({
+              kind: "boss-hazard-zone",
+              x: effect.x,
+              y: effect.y,
+              radius: effect.radius,
+              time: effect.hazardDuration,
+              duration: effect.hazardDuration,
+              tickTimer: effect.hazardTick || 0.5,
+              tickInterval: effect.hazardTick || 0.5,
+              damage: effect.hazardDamage || effect.damage * 0.35,
+              fromBoss: true,
+              skillId: effect.skillId,
+              category: effect.category,
+            });
+          }
+        }
+        if (effect.kind === "boss-hazard-zone") {
+          effect.tickTimer -= dt;
+          while (effect.tickTimer <= 0) {
+            effect.tickTimer += effect.tickInterval;
+            if (distance(effect, state.player) <= effect.radius + state.player.radius) {
+              hitPlayer(effect.damage, { type: "boss", skillId: effect.skillId, category: effect.category });
+            }
+          }
+        }
+        if (effect.kind === "boss-ring-telegraph" && !effect.resolved && elapsed >= effect.windup) {
+          effect.resolved = true;
+          const distToCenter = distance(effect, state.player);
+          const isSafe = effect.safeMode === "inner"
+            ? distToCenter <= effect.innerRadius + state.player.radius
+            : distToCenter >= effect.outerRadius - state.player.radius;
+          if (!isSafe) {
+            hitPlayer(effect.damage, { type: "boss", skillId: effect.skillId, category: effect.category });
+          }
+          pushBossVisualPulse(effect.x, effect.y, effect.safeMode === "inner" ? effect.outerRadius : effect.innerRadius + 34, "burst");
+        }
+        if (effect.time <= 0 && effect.kind === "flame-zone" && effect.leaveEmbers && !effect.emberSpawned) {
+          effect.emberSpawned = true;
+          state.activeEffects.push({
+            kind: "flame-zone",
+            x: effect.x,
+            y: effect.y,
+            radius: effect.emberRadius || effect.radius * 0.72,
+            time: effect.emberDuration || 3,
+            duration: effect.emberDuration || 3,
+            tickTimer: 0.05,
+            tickInterval: Math.max(0.22, effect.tickInterval || 0.3),
+            damage: effect.emberDamage || effect.damage * 0.58,
+            slow: effect.emberSlow || 0,
+            burnDuration: Math.max(1.6, (effect.burnDuration || 1.7) * 0.8),
+            hitCooldowns: new Map(),
+            placement: effect.placement || "embers",
+            palette: effect.palette || null,
+            routeStyle: "zone",
+            isEmberField: true,
+          });
+        }
         if (effect.time <= 0 && effect.kind === "guard-counter-window") {
           deps.triggerGuardCounterFinale(effect);
+          return false;
+        }
+        if (effect.time <= 0 && effect.kind === "bulwark-last-stand") {
+          const guard = state.player.skills.guard;
+          if (guard) {
+            guard.shield = Math.min(guard.maxShield, guard.shield + (effect.restoreShield || 0));
+          }
+          state.pulses.push({
+            x: state.player.x,
+            y: state.player.y,
+            radius: effect.radius || state.player.radius + 24,
+            damage: 0,
+            kind: "guard-reform",
+            time: 0.3,
+            duration: 0.3,
+            hit: new Set(),
+            affectsBoss: false,
+            routeStyle: effect.routeStyle || "bulwark",
+            palette: effect.palette || null,
+          });
           return false;
         }
         return effect.time > 0;
@@ -282,7 +687,11 @@
         projectile.y += projectile.vy * dt;
         projectile.life -= dt;
         const counterEffect = getGuardCounterEffect();
-        if (counterEffect && distance(projectile, state.player) < counterEffect.radius + projectile.radius) {
+        if (
+          counterEffect
+          && projectile.counterable !== false
+          && distance(projectile, state.player) < counterEffect.radius + projectile.radius
+        ) {
           reflectEnemyProjectile(projectile, counterEffect);
           return false;
         }
@@ -314,6 +723,7 @@
               .sort((a, b) => distance(a, pulseItem) - distance(b, pulseItem))
               .slice(0, pulseItem.strikeCount);
             ordered.forEach((target, index) => {
+              const heavyTarget = target.type === "boss" || target.isMiniBoss || target.type === "elite";
               state.pulses.push({
                 x: target.x,
                 y: target.y,
@@ -329,7 +739,15 @@
                 routeStyle: pulseItem.routeStyle || "storm",
               });
               markTargetHitFx(target, "thunder", pulseItem.routeStyle || "storm", pulseItem.palette || null, 0.3, 1.04);
-              dealDamage(target, pulseItem.damage, "thunderstorm");
+              let damage = pulseItem.damage;
+              if (target.type === "boss" && !pulseItem.bossOpenerConsumed) {
+                damage *= pulseItem.bossOpenerMult || 1;
+              } else if (heavyTarget && pulseItem.heavyFirstHitMult > 1 && !pulseItem.heavyTargetsHit?.has(target)) {
+                damage *= pulseItem.heavyFirstHitMult;
+                pulseItem.heavyTargetsHit?.add(target);
+              }
+              dealDamage(target, damage, "thunderstorm");
+              if (target.type === "boss") pulseItem.bossOpenerConsumed = true;
             });
           }
         }
@@ -353,9 +771,14 @@
               if (effectKind) {
                 markTargetHitFx(enemy, effectKind, pulseItem.routeStyle || null, pulseItem.palette || null, 0.26, 0.94);
               }
-              dealDamage(enemy, pulseItem.damage, pulseItem.kind);
-              if (pulseItem.kind === "flame") enemy.burn = 2.5;
-              if (pulseItem.kind === "meteor") enemy.burn = 4;
+              const flameMult = pulseItem.kind === "flame"
+                && pulseItem.innerRadius > 0
+                && distance(pulseItem, enemy) <= pulseItem.innerRadius + enemy.radius
+                ? (pulseItem.innerDamageMult || 1)
+                : 1;
+              dealDamage(enemy, pulseItem.damage * flameMult, pulseItem.kind);
+              if (pulseItem.kind === "flame") enemy.burn = pulseItem.burnDuration || 2.5;
+              if (pulseItem.kind === "meteor") enemy.burn = pulseItem.burnDuration || 4;
             }
           }
         });
@@ -366,7 +789,12 @@
             if (effectKind) {
               markTargetHitFx(state.boss, effectKind, pulseItem.routeStyle || null, pulseItem.palette || null, 0.3, 1.04);
             }
-            dealDamage(state.boss, pulseItem.damage, pulseItem.kind);
+            const flameMult = pulseItem.kind === "flame"
+              && pulseItem.innerRadius > 0
+              && distance(pulseItem, state.boss) <= pulseItem.innerRadius + state.boss.radius
+              ? (pulseItem.innerDamageMult || 1)
+              : 1;
+            dealDamage(state.boss, pulseItem.damage * flameMult, pulseItem.kind);
           }
         }
         return pulseItem.time > 0;
@@ -441,52 +869,49 @@
       const dx = state.player.x - boss.x;
       const dy = state.player.y - boss.y;
       const dist = Math.max(1, Math.hypot(dx, dy));
-      const template = enemies.boss;
-      const speedMult = boss.phase === 3 ? 1.4 : boss.phase === 2 ? 1.2 : 1;
+      const phaseConfig = getBossPhaseConfig(boss);
       const slowMult = boss.slowUntil > state.time ? Math.max(0.45, boss.slowMult || 1) : 1;
-      boss.x += (dx / dist) * enemies.boss.speed * speedMult * slowMult * dt;
-      boss.y += (dy / dist) * enemies.boss.speed * speedMult * slowMult * dt;
-      boss.attackTimer -= dt;
-      if (distance(boss, state.player) < boss.radius + state.player.radius && boss.attackTimer <= 0.18) {
-        hitPlayer(boss.damage, boss);
-      }
-      if (boss.attackTimer <= 0) {
-        boss.pattern = (boss.pattern + 1) % 3;
-        if (boss.pattern === 0) {
-          pulse(boss.x, boss.y, template.waveRadius, boss.damage * template.waveDamageMult, "bosswave", false);
-        } else if (boss.pattern === 1) {
-          for (let i = 0; i < template.radialProjectileCount; i += 1) {
-            const angle = (Math.PI * 2 * i) / template.radialProjectileCount;
-            state.enemyProjectiles.push({
-              x: boss.x,
-              y: boss.y,
-              vx: Math.cos(angle) * template.radialProjectileSpeed,
-              vy: Math.sin(angle) * template.radialProjectileSpeed,
-              radius: 7,
-              damage: boss.damage * 0.52,
-              life: 4,
-            });
-          }
+      boss.attackTimer = Math.max(0, boss.attackTimer - dt);
+      boss.exposedTimer = Math.max(0, boss.exposedTimer - dt);
+      boss.contactTimer = Math.max(0, boss.contactTimer - dt);
+      let moveMult = (phaseConfig?.moveMult || 1) * slowMult;
+      if (boss.intent?.moveMult != null) moveMult *= boss.intent.moveMult;
+      if (boss.exposedTimer > 0) moveMult *= 0.28;
+      const desiredRange = phaseConfig?.desiredRange || 0;
+      if (desiredRange > 0) {
+        const rangeDelta = dist - desiredRange;
+        if (Math.abs(rangeDelta) > 16) {
+          const direction = rangeDelta > 0 ? 1 : -0.72;
+          boss.x += (dx / dist) * boss.speed * moveMult * direction * dt;
+          boss.y += (dy / dist) * boss.speed * moveMult * direction * dt;
         } else {
-          for (let i = 0; i < template.fanProjectileCount; i += 1) {
-            const angle = Math.atan2(dy, dx) + (i - (template.fanProjectileCount - 1) / 2) * 0.18;
-            state.enemyProjectiles.push({
-              x: boss.x,
-              y: boss.y,
-              vx: Math.cos(angle) * template.fanProjectileSpeed,
-              vy: Math.sin(angle) * template.fanProjectileSpeed,
-              radius: 8,
-              damage: boss.damage * 0.62,
-              life: 4,
-            });
-          }
-          const summonCount = boss.phase === 3 ? template.summonCountPhase3 : boss.phase === 2 ? template.summonCountPhase2 : 0;
-          for (let i = 0; i < summonCount; i += 1) {
-            spawnEnemy(i % 2 === 0 ? "charger" : "ranged", Math.random() < 0.5 ? "white" : "black");
-          }
+          const tangentX = -dy / dist;
+          const tangentY = dx / dist;
+          const strafeDir = (Math.floor((state.time - (boss.phaseStartedAt || 0)) * 1.25) % 2 === 0) ? 1 : -1;
+          boss.x += tangentX * boss.speed * moveMult * 0.32 * strafeDir * dt;
+          boss.y += tangentY * boss.speed * moveMult * 0.32 * strafeDir * dt;
         }
-        boss.attackTimer = boss.phase === 1 ? template.attackCooldowns.phase1 : boss.phase === 2 ? template.attackCooldowns.phase2 : template.attackCooldowns.phase3;
+      } else {
+        boss.x += (dx / dist) * boss.speed * moveMult * dt;
+        boss.y += (dy / dist) * boss.speed * moveMult * dt;
       }
+      boss.x = clamp(boss.x, boss.radius + 10, WIDTH - boss.radius - 10);
+      boss.y = clamp(boss.y, boss.radius + 10, HEIGHT - boss.radius - 10);
+      if (distance(boss, state.player) < boss.radius + state.player.radius && boss.contactTimer <= 0) {
+        hitPlayer(boss.damage * (boss.config?.contactDamageMult || 1), boss);
+        boss.contactTimer = boss.config?.contactCooldown || enemies.boss.contactCooldown || 0.55;
+      }
+      if (boss.intent) {
+        boss.intent.timer -= dt;
+        if (boss.intent.timer <= 0) resolveBossSkill(boss);
+        return;
+      }
+      if (boss.attackTimer > 0 || boss.exposedTimer > 0) return;
+      const sequence = phaseConfig?.sequence || [];
+      if (!sequence.length) return;
+      const skillId = sequence[boss.sequenceCursor % sequence.length];
+      boss.sequenceCursor += 1;
+      startBossSkill(boss, skillId);
     }
 
     function updateDrops(dt) {
@@ -508,7 +933,20 @@
         }
         if (dist < state.player.radius + drop.radius + 4) {
           if (drop.kind === "xp") addXp(drop.value);
-          if (drop.kind === "path") fillPath(drop.color, drop.value);
+          if (typeof onDropCollected === "function") {
+            onDropCollected(drop, {
+              autoCollect: !!drop.autoCollect,
+              inAttractRange,
+            });
+          }
+          if (drop.kind === "path") fillPath(drop.color, drop.value, {
+            kind: "drop_pickup",
+            dropKind: drop.kind,
+            isEliteReward: !!drop.isEliteReward,
+            isMiniBossReward: !!drop.isMiniBossReward,
+            highValueKey: drop.destinyRuntimeHighValueKey || null,
+            autoCollect: !!drop.autoCollect,
+          });
           return false;
         }
         return true;
@@ -530,12 +968,19 @@
 
     function updateStatuses(dt) {
       state.statuses = state.statuses.filter((status) => {
+        const previousHp = state.player.hp;
         status.remaining -= dt;
         if (status.effects.drain) {
           state.player.hp -= state.player.maxHp * status.effects.drain * dt;
+          if (typeof onHpChanged === "function" && state.player.hp !== previousHp) {
+            onHpChanged(`status_drain_${status.name}`, previousHp);
+          }
           if (state.player.hp <= 0) finishGame(RESULT_DEATH);
         }
         if (status.remaining > 0) return true;
+        if (typeof onStatusExpired === "function") {
+          onStatusExpired(status.name, "status_timer");
+        }
         if (typeof status.effects.onExpire === "function") status.effects.onExpire();
         return false;
       });

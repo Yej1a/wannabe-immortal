@@ -99,6 +99,7 @@ const {
   BRANCH_CHOICE_GUARANTEE_COUNT,
   ACTIVE_UNLOCK_RANK,
   HUMAN_ENDING_DESTINY_ID,
+  DESTINY_RUNTIME_RULES,
   destinyCatalog,
   skills,
   skillRouteTable,
@@ -151,6 +152,9 @@ const {
 const {
   createGameplayHelpers,
 } = window.GameplayHelpers;
+const {
+  createDestinyRuntime,
+} = window.GameDestinyRuntime;
 const {
   createInspectSystem,
 } = window.GameInspectSystem;
@@ -317,6 +321,8 @@ const {
   isGuiyuanActive,
   getActiveLevel,
   getSkillRouteState,
+  getSkillRouteStage,
+  getSkillRouteDisplayLabel,
   getSkillRouteLabel,
   getSkillActiveProfile,
   getSkillRouteVfx,
@@ -324,9 +330,12 @@ const {
   isActiveUnlocked,
   getSkillBranchCount,
   canTakeBranchUpgrade,
+  canTakeCapstoneUpgrade,
   markRouteSwitch,
+  markRouteGraduation,
   applySkillBaseUpgrade,
   applySkillBranchUpgrade,
+  applySkillCapstoneUpgrade,
   nearestEnemyFromPoint,
   getTargetsWithinRadius,
   getCombatTargets,
@@ -376,7 +385,51 @@ function formatTime(totalSeconds) {
 }
 
 function setToast(message) {
-  setToastImpl(dom, uiState, message);
+  let tone = "";
+  if (typeof message === "object" && message) {
+    tone = message.tone || "";
+    setToastImpl(dom, uiState, message.text || "", tone);
+    return;
+  }
+  setToastImpl(dom, uiState, message, tone);
+}
+
+const destinyRuntime = createDestinyRuntime({
+  state,
+  metaState,
+  DESTINY_RUNTIME_RULES,
+  getSkillRouteState,
+  grantBarrier,
+  healPlayer,
+  fillPath,
+  pulse,
+  setToast,
+});
+
+function notifyDestinyHpChanged(source, previousHp) {
+  destinyRuntime.emit("hp_changed", {
+    source,
+    previousHp,
+    nextHp: state.player.hp,
+  });
+}
+
+function notifyDestinyProtectiveLayer(layer, source, previousValue, nextValue = null) {
+  const resolvedNextValue = nextValue == null
+    ? (layer === "guard-shield" ? (state.player.skills.guard?.shield || 0) : state.player.barrier)
+    : nextValue;
+  destinyRuntime.emit("protective_layer_changed", {
+    layer,
+    source,
+    previousValue,
+    nextValue: resolvedNextValue,
+  });
+}
+
+function notifyDestinyLoadoutChanged(reason) {
+  destinyRuntime.emit("destiny_loadout_changed", { reason });
+  state.enemies.forEach((enemy) => applyDestinyEnemySpawnModifiers(enemy));
+  if (state.player.skills.guard) syncGuardRewriteState(state.player.skills.guard);
 }
 
 function closeModal() {
@@ -458,7 +511,8 @@ inspectSystem = createInspectSystem({
   skills,
   getThunderDamage,
   getSkillActiveProfile,
-  getSkillRouteLabel,
+  getSkillRouteLabel: getSkillRouteDisplayLabel,
+  getSkillRouteStage,
   getActiveLevel,
   isActiveUnlocked,
   getEquippedDestinyEntries,
@@ -474,6 +528,53 @@ function resetPathCharge(path) {
   path.tier2Triggered = false;
 }
 
+function getPathPalette(color, level = "tier1") {
+  if (color === "white") {
+    if (level === "release") return { primary: "#f7f1dc", secondary: "#c6dbed", accent: "#ffffff" };
+    if (level === "ready") return { primary: "#efe6ca", secondary: "#b9d6ea", accent: "#fffdf5" };
+    return { primary: "#efe7d2", secondary: "#b7cee0", accent: "#ffffff" };
+  }
+  if (level === "release") return { primary: "#ffbe74", secondary: "#a3475f", accent: "#ffd8ab" };
+  if (level === "ready") return { primary: "#ffb26f", secondary: "#7a3c5a", accent: "#ffd0a0" };
+  return { primary: "#ff9c63", secondary: "#6c334f", accent: "#ffc68f" };
+}
+
+function emitPathThresholdCue(color, tier) {
+  const radius = tier === 1 ? 58 : 86;
+  const duration = tier === 1 ? 0.22 : 0.28;
+  pulse(state.player.x, state.player.y, radius, 0, color === "white" ? "guard" : "burst", false, {
+    duration,
+    time: duration,
+    palette: getPathPalette(color, tier === 2 ? "tier2" : "tier1"),
+    routeStyle: color === "white" ? "bulwark" : "meteor",
+  });
+}
+
+function emitPathReadyCue(color) {
+  const radius = color === "white" ? 104 : 118;
+  const duration = 0.34;
+  pulse(state.player.x, state.player.y, radius, 0, color === "white" ? "guard" : "burst", false, {
+    duration,
+    time: duration,
+    palette: getPathPalette(color, "ready"),
+    routeStyle: color === "white" ? "bulwark" : "meteor",
+  });
+}
+
+function markPathImpact(color, radius) {
+  const effectKind = color === "white" ? "guard" : "flame";
+  const routeStyle = color === "white" ? "bulwark" : "meteor";
+  const palette = getPathPalette(color, "release");
+  state.enemies.forEach((enemy) => {
+    if (distance(state.player, enemy) <= radius + enemy.radius) {
+      markTargetHitFx(enemy, effectKind, routeStyle, palette, 0.34, 1.08);
+    }
+  });
+  if (state.boss && distance(state.player, state.boss) <= radius + state.boss.radius) {
+    markTargetHitFx(state.boss, effectKind, routeStyle, palette, 0.38, 1.12);
+  }
+}
+
 function triggerPathTier(color, tier) {
   if (color === "white" && tier === 1) {
     addStatus("清明", PATH_COMBAT.white.tier1Duration, {
@@ -483,7 +584,13 @@ function triggerPathTier(color, tier) {
       onKillHealPct: PATH_COMBAT.white.tier1HealPct,
       onKillHealCooldown: PATH_COMBAT.white.tier1HealCooldown,
     });
-    setToast("白道 1/3：清明");
+    destinyRuntime.emit("status_applied", {
+      name: "清明",
+      duration: PATH_COMBAT.white.tier1Duration,
+      source: "path_threshold_tier1",
+    });
+    emitPathThresholdCue("white", 1);
+    setToast({ text: "清明已触发", tone: "white-tier" });
     return;
   }
   if (color === "white" && tier === 2) {
@@ -492,18 +599,29 @@ function triggerPathTier(color, tier) {
       PATH_COMBAT.white.tier2BarrierMin,
       PATH_COMBAT.white.tier2BarrierMax,
     );
+    const previousBarrier = state.player.barrier;
     grantBarrier(barrier);
+    notifyDestinyProtectiveLayer("barrier", "path_threshold_tier2", previousBarrier);
     addStatus("灵护", PATH_COMBAT.white.tier2Duration, {
       eliteAttractSpeedMult: PATH_COMBAT.white.tier2EliteAttractMult,
       requireBarrier: true,
       onExpire: () => {
         if (state.player.hp / Math.max(1, state.player.maxHp) >= PATH_COMBAT.white.tier2RefundThreshold) {
-          fillPath("white", PATH_COMBAT.white.tier2RefundValue);
+          fillPath("white", PATH_COMBAT.white.tier2RefundValue, {
+            kind: "status_refund",
+            statusName: "灵护",
+          });
           setToast("灵护善终：返还白道值");
         }
       },
     });
-    setToast("白道 2/3：灵护");
+    destinyRuntime.emit("status_applied", {
+      name: "灵护",
+      duration: PATH_COMBAT.white.tier2Duration,
+      source: "path_threshold_tier2",
+    });
+    emitPathThresholdCue("white", 2);
+    setToast({ text: "灵护已触发", tone: "white-tier" });
     return;
   }
   if (color === "black" && tier === 1) {
@@ -516,7 +634,13 @@ function triggerPathTier(color, tier) {
       blackBurstEnemyMaxHpPct: PATH_COMBAT.black.tier1BurstEnemyMaxHpPct,
       drain: PATH_COMBAT.black.tier1Drain,
     });
-    setToast("黑道 1/3：煞燃");
+    destinyRuntime.emit("status_applied", {
+      name: "煞燃",
+      duration: PATH_COMBAT.black.tier1Duration,
+      source: "path_threshold_tier1",
+    });
+    emitPathThresholdCue("black", 1);
+    setToast({ text: "煞燃已触发", tone: "black-tier" });
     return;
   }
   if (color === "black" && tier === 2) {
@@ -532,7 +656,13 @@ function triggerPathTier(color, tier) {
         bossMult: PATH_COMBAT.black.tier2BossExecuteMult,
       },
     });
-    setToast("黑道 2/3：魔驰");
+    destinyRuntime.emit("status_applied", {
+      name: "魔驰",
+      duration: PATH_COMBAT.black.tier2Duration,
+      source: "path_threshold_tier2",
+    });
+    emitPathThresholdCue("black", 2);
+    setToast({ text: "魔驰已触发", tone: "black-tier" });
   }
 }
 
@@ -550,10 +680,12 @@ function maybeTriggerPathThresholds(path, previousValue) {
     path.value = path.cap;
     if (path.color === "white") {
       state.whiteInfusionPoints += 1;
-      setToast(`白槽已满，可按 Q 释放；白点化点 +1（当前 ${state.whiteInfusionPoints}）`);
+      emitPathReadyCue("white");
+      setToast({ text: "白槽已满", tone: "white-ready" });
     } else {
       state.blackInfusionPoints += 1;
-      setToast(`黑槽已满，可按 E 释放；黑点化点 +1（当前 ${state.blackInfusionPoints}）`);
+      emitPathReadyCue("black");
+      setToast({ text: "黑槽已满", tone: "black-ready" });
     }
   }
 }
@@ -562,7 +694,7 @@ function hasInfusionPoints() {
   return state.whiteInfusionPoints > 0 || state.blackInfusionPoints > 0;
 }
 
-function emitStabilizePulse(radius) {
+function emitStabilizePulse(radius, extra = null) {
   state.pulses.push({
     x: state.player.x,
     y: state.player.y,
@@ -573,6 +705,7 @@ function emitStabilizePulse(radius) {
     duration: 0.24,
     hit: new Set(),
     affectsBoss: true,
+    ...(extra && typeof extra === "object" ? extra : {}),
   });
   state.enemies.forEach((enemy) => {
     const dx = enemy.x - state.player.x;
@@ -600,12 +733,24 @@ function tryReleasePath(color) {
   const path = color === "white" ? state.whitePath : state.blackPath;
   if (!path.full) return false;
   if (color === "white") {
-    emitStabilizePulse(PATH_COMBAT.white.fullPulseRadius);
+    destinyRuntime.emit("release_started", {
+      color: "white",
+      statusName: "天息",
+      source: "manual_q",
+    });
+    emitStabilizePulse(PATH_COMBAT.white.fullPulseRadius, {
+      duration: 0.38,
+      time: 0.38,
+      palette: getPathPalette("white", "release"),
+      routeStyle: "bulwark",
+    });
+    const previousBarrier = state.player.barrier;
     grantBarrier(clamp(
       state.player.maxHp * PATH_COMBAT.white.fullBarrierPct,
       PATH_COMBAT.white.fullBarrierMin,
       PATH_COMBAT.white.fullBarrierMax,
     ));
+    notifyDestinyProtectiveLayer("barrier", "white_release", previousBarrier);
     addStatus("天息", PATH_COMBAT.white.fullDuration, {
       incomingMult: PATH_COMBAT.white.fullIncomingMult,
       pickupBonus: PATH_COMBAT.white.fullPickupBonus,
@@ -614,14 +759,32 @@ function tryReleasePath(color) {
       onKillHealPct: PATH_COMBAT.white.fullHealPct,
       onKillHealCooldown: PATH_COMBAT.white.fullHealCooldown,
     });
-    setToast("白道满槽：天息");
+    destinyRuntime.emit("status_applied", {
+      name: "天息",
+      duration: PATH_COMBAT.white.fullDuration,
+      source: "white_release",
+    });
+    markPathImpact("white", PATH_COMBAT.white.fullPulseRadius);
+    setToast({ text: "天息已启", tone: "white-release" });
   } else {
+    destinyRuntime.emit("release_started", {
+      color: "black",
+      statusName: "魔沸",
+      source: "manual_e",
+    });
     pulse(
       state.player.x,
       state.player.y,
       PATH_COMBAT.black.fullPulseRadius,
       computeDamage(PATH_COMBAT.black.fullPulseBase + getPlayerAttackPower() * 1.1),
-      "guard",
+      "burst",
+      true,
+      {
+        duration: 0.42,
+        time: 0.42,
+        palette: getPathPalette("black", "release"),
+        routeStyle: "meteor",
+      },
     );
     addStatus("魔沸", PATH_COMBAT.black.fullDuration, {
       damageMult: PATH_COMBAT.black.fullDamageMult,
@@ -630,7 +793,13 @@ function tryReleasePath(color) {
       blackBurstRadiusMult: PATH_COMBAT.black.fullBurstRadiusMult,
       drain: PATH_COMBAT.black.fullDrain,
     });
-    setToast("黑道满槽：魔沸");
+    destinyRuntime.emit("status_applied", {
+      name: "魔沸",
+      duration: PATH_COMBAT.black.fullDuration,
+      source: "black_release",
+    });
+    markPathImpact("black", PATH_COMBAT.black.fullPulseRadius);
+    setToast({ text: "魔沸已启", tone: "black-release" });
   }
   resetPathCharge(path);
   return true;
@@ -651,7 +820,9 @@ function maybeTriggerBlackMomentum(source = "auto") {
 function maybeTriggerKillHeal() {
   const profile = getKillHealProfile();
   if (profile.healPct <= 0 || state.whiteKillHealCooldown > 0) return;
+  const previousHp = state.player.hp;
   healPlayer(state.player.maxHp * profile.healPct, "white-destiny");
+  notifyDestinyHpChanged("white_kill_heal", previousHp);
   state.whiteKillHealCooldown = profile.cooldown;
 }
 
@@ -667,53 +838,33 @@ function triggerBlackBurst(enemy) {
   );
 }
 
-function triggerQingxinDestiny(enemy) {
-  if (!hasEquippedDestiny("qingxin")) return;
-  if (hasStatus("灵护")) {
-    grantBarrier(12);
-  }
-  if (hasStatus("天息")) {
-    healPlayer(state.player.maxHp * 0.035, "white-destiny");
-  }
-}
-
-function recordDandingTrigger(targetType) {
-  if (!hasEquippedDestiny("danding") || !isWhiteCombatStatusActive()) return;
-  if (!(targetType === "elite" || targetType === "boss")) return;
-  state.dandingTriggerCount += 1;
-  setToast(`丹鼎真解：本轮结算额外收益 ${state.dandingTriggerCount}`);
-}
-
 function queueSwordChainFrom(enemy) {
-  const sword = state.player.skills.sword;
-  if (!sword || !hasEquippedDestiny("jianyigu")) return;
-  const routeVfx = getSkillRouteVfx("sword", sword);
-  const nextTarget = [...state.enemies, state.boss].filter(Boolean)
-    .sort((a, b) => distance(a, enemy) - distance(b, enemy))[0];
-  if (!nextTarget) return;
-  const dist = Math.max(1, distance(enemy, nextTarget));
-  state.projectiles.push({
-    x: enemy.x,
-    y: enemy.y,
-    vx: ((nextTarget.x - enemy.x) / dist) * 420,
-    vy: ((nextTarget.y - enemy.y) / dist) * 420,
-    radius: 6,
-    damage: computeDamage(sword.damage * 0.9),
-    pierce: Math.max(0, sword.pierce),
-    life: 1.2,
-    color: routeVfx.palette?.primary || "#f0ddb0",
-    kind: "sword-chain",
-    routeStyle: routeVfx.auto?.style || "swarm",
-    palette: routeVfx.palette || null,
-    visualScale: routeVfx.auto?.projectileScale || 1,
-    trailLength: routeVfx.auto?.trailLength || 18,
-    trailWidth: routeVfx.auto?.trailWidth || 2.4,
-    impactKind: routeVfx.auto?.impactPulseKind || "sword-hit",
-  });
+  return enemy;
 }
 
 function isSwordSource(source) {
   return typeof source === "string" && source.startsWith("sword");
+}
+
+function normalizeSourceId(source) {
+  if (typeof source === "string") return source;
+  if (source && typeof source === "object" && typeof source.source === "string") return source.source;
+  return "player";
+}
+
+function buildKillRuntimePayload(enemy, source, extra = {}) {
+  const sourceId = normalizeSourceId(source);
+  const distanceToPlayer = distance(state.player, enemy);
+  const isHighValue = enemy.type === "elite" || enemy.type === "boss" || !!enemy.isMiniBoss;
+  return {
+    enemy,
+    enemyType: enemy.type === "elite" && enemy.isMiniBoss ? "miniBoss" : enemy.type,
+    source: sourceId,
+    isHighValue,
+    isMeleeKill: distanceToPlayer <= DESTINY_RUNTIME_RULES.meleeRange,
+    isExecuteKill: !!extra.isExecuteKill,
+    distanceToPlayer,
+  };
 }
 
 function getActiveSacrificeBoost() {
@@ -724,12 +875,148 @@ function clearActiveSacrificeBoost() {
   state.pendingActiveSacrificeBoost = 0;
 }
 
-function prepareRanshouActiveBoost() {
-  if (!hasEquippedDestiny("ranshou")) return;
-  const cost = state.player.maxHp * 0.05;
-  state.player.hp = Math.max(1, state.player.hp - cost);
-  state.pendingActiveSacrificeBoost = 1.43;
-  setToast(`燃寿魔功：耗血 ${Math.ceil(cost)}，强化本次主动`);
+function hasRouteCapstone(skillId, skill, routeId = null) {
+  const routeStage = getSkillRouteStage(skillId, skill);
+  if (!routeStage?.graduated) return false;
+  return routeId ? routeStage.routeId === routeId : true;
+}
+
+function getSkillRewriteLayer(skillId, destinyId) {
+  const rewriteState = destinyRuntime.getSkillRewriteState(skillId);
+  return rewriteState.entries.find((entry) => entry.destinyId === destinyId)?.layer || "inactive";
+}
+
+function applyRewriteNumbers(target, source) {
+  if (!source) return;
+  Object.entries(source).forEach(([key, value]) => {
+    if (!Number.isFinite(value)) return;
+    if (key.endsWith("Mult")) {
+      target[key] = (target[key] ?? 1) * value;
+      return;
+    }
+    target[key] = (target[key] ?? 0) + value;
+  });
+}
+
+function getSwordRewriteProfile() {
+  const profile = {
+    autoVolleyBonus: 0,
+    projectileSpeedMult: 1,
+    activeVolleyBonus: 0,
+    activeProjectileSpeedMult: 1,
+    turnRateMult: 1,
+    damageMult: 1,
+    projectileRadiusMult: 1,
+    activeDamageMult: 1,
+    activeWidthMult: 1,
+    activeDurationBonus: 0,
+    pressureBonus: 0,
+  };
+  const bindings = DESTINY_RUNTIME_RULES.skillRewriteBindings;
+  [
+    ["wanjian", bindings.wanjian],
+    ["juque", bindings.juque],
+  ].forEach(([destinyId, binding]) => {
+    const layer = getSkillRewriteLayer("sword", destinyId);
+    if (layer === "base") applyRewriteNumbers(profile, binding.base);
+    if (layer === "signature") applyRewriteNumbers(profile, binding.signature);
+  });
+  return profile;
+}
+
+function getThunderRewriteProfile() {
+  const profile = {
+    chainCountBonus: 0,
+    chainRangeBonus: 0,
+    newTargetBias: 0,
+    activeRangeMult: 1,
+    activeDurationBonus: 0,
+    activeJumpBonus: 0,
+    activeRadiusMult: 1,
+    activeStrikeBonus: 0,
+    bossOpenerMult: 1,
+  };
+  const bindings = DESTINY_RUNTIME_RULES.skillRewriteBindings;
+  [
+    ["jiuzhuan", bindings.jiuzhuan],
+    ["leiyu", bindings.leiyu],
+  ].forEach(([destinyId, binding]) => {
+    const layer = getSkillRewriteLayer("thunder", destinyId);
+    if (layer === "base") applyRewriteNumbers(profile, binding.base);
+    if (layer === "signature") applyRewriteNumbers(profile, binding.signature);
+  });
+  return profile;
+}
+
+function getFlameRewriteProfile() {
+  const profile = {
+    innerDamageMult: 1,
+    burnDurationBonus: 0,
+    outerRadiusMult: 1,
+    lingerDurationBonus: 0,
+    meteorDamageMult: 1,
+    meteorCountBonus: 0,
+    meteorBurstBonus: 0,
+    zoneRadiusBonus: 0,
+    zoneDurationBonus: 0,
+    zoneSlowBonus: 0,
+  };
+  const bindings = DESTINY_RUNTIME_RULES.skillRewriteBindings;
+  [
+    ["jiehuo", bindings.jiehuo],
+    ["lihuo", bindings.lihuo],
+  ].forEach(([destinyId, binding]) => {
+    const layer = getSkillRewriteLayer("flame", destinyId);
+    if (layer === "base") applyRewriteNumbers(profile, binding.base);
+    if (layer === "signature") applyRewriteNumbers(profile, binding.signature);
+  });
+  return profile;
+}
+
+function getGuardRewriteProfile() {
+  const profile = {
+    maxShieldMult: 1,
+    barrierShellDurationBonus: 0,
+    bulwarkRadiusMult: 1,
+    shieldRegenPctPerSecond: 0,
+    counterPushMult: 1,
+    counterShockMult: 1,
+    reflectDamageMult: 1,
+    finaleDamageMult: 1,
+    reflectGuaranteed: 0,
+  };
+  const bindings = DESTINY_RUNTIME_RULES.skillRewriteBindings;
+  [
+    ["xuangang", bindings.xuangang],
+    ["fantian", bindings.fantian],
+  ].forEach(([destinyId, binding]) => {
+    const layer = getSkillRewriteLayer("guard", destinyId);
+    if (layer === "base") applyRewriteNumbers(profile, binding.base);
+    if (layer === "signature") applyRewriteNumbers(profile, binding.signature);
+  });
+  return profile;
+}
+
+function syncGuardRewriteState(skill) {
+  if (!skill) return getGuardRewriteProfile();
+  const profile = getGuardRewriteProfile();
+  skill.baseMaxShield = Number.isFinite(skill.baseMaxShield) ? skill.baseMaxShield : skill.maxShield;
+  const previousMult = Number.isFinite(skill.appliedGuardRewriteMaxShieldMult)
+    ? skill.appliedGuardRewriteMaxShieldMult
+    : 1;
+  const previousMaxShield = Math.max(1, skill.baseMaxShield * previousMult);
+  const nextMaxShield = Math.max(1, skill.baseMaxShield * profile.maxShieldMult);
+  if (!Number.isFinite(skill.shield)) skill.shield = nextMaxShield;
+  if (Math.abs(previousMaxShield - nextMaxShield) > 0.001) {
+    const ratio = clamp(skill.shield / previousMaxShield, 0, 1.5);
+    skill.maxShield = nextMaxShield;
+    skill.shield = clamp(nextMaxShield * ratio, 0, nextMaxShield);
+  } else {
+    skill.maxShield = nextMaxShield;
+    skill.shield = clamp(skill.shield, 0, nextMaxShield);
+  }
+  skill.appliedGuardRewriteMaxShieldMult = profile.maxShieldMult;
+  return profile;
 }
 
 function activateGuiyuanHealBuff() {
@@ -742,22 +1029,17 @@ function activateGuiyuanHealBuff() {
 function healFromBlackMeleeKill(enemy) {
   if (!isGuiyuanActive()) return;
   if (distance(state.player, enemy) > PATH_COMBAT.gain.meleeRange) return;
+  const previousHp = state.player.hp;
   healPlayer(state.player.maxHp * 0.04, "generic");
+  notifyDestinyHpChanged("guiyuan_melee_kill_heal", previousHp);
 }
 
-function getSwordTargets(count) {
+function getSwordTargets(count, extraCount = 0) {
   const targets = [...state.enemies];
   if (state.boss) targets.push(state.boss);
-  if (!hasEquippedDestiny("jianyigu")) {
-    return targets.sort((a, b) => distance(a, state.player) - distance(b, state.player)).slice(0, count);
-  }
   return targets
-    .sort((a, b) => {
-      const ratioDelta = (a.hp / Math.max(1, a.maxHp)) - (b.hp / Math.max(1, b.maxHp));
-      if (Math.abs(ratioDelta) > 0.01) return ratioDelta;
-      return distance(a, state.player) - distance(b, state.player);
-    })
-    .slice(0, count);
+    .sort((a, b) => distance(a, state.player) - distance(b, state.player))
+    .slice(0, Math.max(0, count + extraCount));
 }
 
 function distancePointToSegment(point, start, end) {
@@ -928,7 +1210,11 @@ function triggerGuardCounterShock(effect, scale = 1, source = null) {
     if (distance(target, state.player) > radius + target.radius) return;
     markTargetHitFx(target, "guard", "counter", effect.palette || null, 0.28, 1.04);
     dealDamage(target, damage, "guard-counter");
-    pushEnemyAway(target, state.player, target.type === "boss" ? 18 : 32 + effect.shockCount * 2);
+    pushEnemyAway(
+      target,
+      state.player,
+      (target.type === "boss" ? 18 : 32 + effect.shockCount * 2) * (effect.pushMult || 1),
+    );
   });
   if (source && source.type) {
     state.pulses.push({
@@ -967,7 +1253,7 @@ function triggerGuardCounterFinale(effect) {
     if (distance(target, state.player) > radius + target.radius) return;
     markTargetHitFx(target, "guard", "counter", effect.palette || null, 0.32, 1.16);
     dealDamage(target, damage, "guard-counter-finale");
-    pushEnemyAway(target, state.player, target.type === "boss" ? 26 : 46);
+    pushEnemyAway(target, state.player, (target.type === "boss" ? 26 : 46) * (effect.pushMult || 1));
   });
 }
 
@@ -992,8 +1278,8 @@ function reflectEnemyProjectile(projectile, effect) {
     vx,
     vy,
     radius: projectile.radius + 0.5,
-    damage: effect.damage * 0.72 + projectile.damage * 1.25,
-    pierce: 1,
+    damage: (effect.damage * 0.72 + projectile.damage * 1.25) * (effect.reflectDamageMult || 1),
+    pierce: 1 + (effect.reflectGuaranteed || 0),
     life: 2.4,
     color: routeVfx.palette?.primary || "#dce9ff",
     kind: "guard-counter-shot",
@@ -1021,12 +1307,16 @@ function updatePathBehavior(dt) {
   state.blackMomentumCooldown = Math.max(0, state.blackMomentumCooldown - dt);
   state.blackMomentumTimer = Math.max(0, state.blackMomentumTimer - dt);
   if (state.blackMomentumTimer <= 0) state.blackMomentumStacks = 0;
+  destinyRuntime.tick(dt);
 
   if (!state.whitePath.full && state.noHitTimer >= PATH_COMBAT.gain.whiteUntouchedDelay) {
     state.whiteUntouchedRewardTimer += dt;
     if (state.whiteUntouchedRewardTimer >= PATH_COMBAT.gain.whiteUntouchedInterval) {
       state.whiteUntouchedRewardTimer -= PATH_COMBAT.gain.whiteUntouchedInterval;
-      fillPath("white", PATH_COMBAT.gain.whiteUntouchedValue);
+      fillPath("white", PATH_COMBAT.gain.whiteUntouchedValue, {
+        kind: "steady_white",
+        source: "untouched_loop",
+      });
       setToast("白道感悟：清心未伤");
     }
   } else {
@@ -1054,6 +1344,7 @@ function unlockSkill(gameState, id) {
       activeTimer: 0,
       baseUpgrades: 0,
       route: null,
+      capstone: null,
       routePoints,
       swarmVolleyBonus: 0,
       greatswordWidthBonus: 0,
@@ -1073,6 +1364,7 @@ function unlockSkill(gameState, id) {
       activeTimer: 0,
       baseUpgrades: 0,
       route: null,
+      capstone: null,
       routePoints,
       chainFocus: 0,
       chainRangeBonus: 0,
@@ -1093,6 +1385,7 @@ function unlockSkill(gameState, id) {
       activeTimer: 0,
       baseUpgrades: 0,
       route: null,
+      capstone: null,
       routePoints,
       meteorFocus: 0,
       meteorBurstBonus: 0,
@@ -1105,6 +1398,7 @@ function unlockSkill(gameState, id) {
     gameState.player.skills.guard = {
       id,
       rank: 1,
+      baseMaxShield: base.shield,
       maxShield: base.shield,
       shield: base.shield,
       recharge: base.recharge,
@@ -1113,8 +1407,10 @@ function unlockSkill(gameState, id) {
       activeTimer: 0,
       baseUpgrades: 0,
       route: null,
+      capstone: null,
       routePoints,
       bulwarkFocus: 0,
+      bulwarkLastStandCooldown: 0,
       counterFocus: 0,
       counterWindowBonus: 0,
       counterShockBonus: 0,
@@ -1122,6 +1418,13 @@ function unlockSkill(gameState, id) {
   }
   gameState.player.skillOrder.push(id);
   gameState.player.skillFocus[id] = (gameState.player.skillFocus[id] || 0) + 1;
+  if (gameState === state) {
+    destinyRuntime.emit("skill_learned", { skillId: id });
+    if (id === "guard") {
+      syncGuardRewriteState(gameState.player.skills.guard);
+      notifyDestinyProtectiveLayer("guard-shield", "guard_skill_learned", 0, gameState.player.skills.guard.shield);
+    }
+  }
 }
 
 window.unlockSkill = unlockSkill;
@@ -1203,6 +1506,16 @@ const levelChoices = [
     }),
   },
   {
+    id: "sword-swarm-capstone",
+    name: "万剑齐发",
+    desc: "数量流毕业：普攻飞剑数量永久 +2，主动技剑潮会瞬时铺满战场。",
+    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "sword", "swarm"),
+    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "sword", "swarm", (skill) => {
+      skill.projectiles += 2;
+      skill.swarmVolleyBonus += 4;
+    }),
+  },
+  {
     id: "sword-great-1",
     name: "巨刃凝形",
     desc: "解锁大剑流，巨阙镇场体积与切割宽度提升。",
@@ -1220,6 +1533,18 @@ const levelChoices = [
     apply: (stateRef) => applySkillBranchUpgrade(stateRef, "sword", "greatsword", (skill) => {
       skill.greatswordDurationBonus += 0.45;
       skill.greatswordPressureBonus += 0.18;
+    }),
+  },
+  {
+    id: "sword-great-capstone",
+    name: "巨阙镇场",
+    desc: "大剑流毕业：巨剑更长、更久、更重，普攻重剑存在感也会同步抬高。",
+    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "sword", "greatsword"),
+    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "sword", "greatsword", (skill) => {
+      skill.damage *= 1.12;
+      skill.greatswordWidthBonus += 1;
+      skill.greatswordDurationBonus += 0.8;
+      skill.greatswordPressureBonus += 0.22;
     }),
   },
   {
@@ -1272,6 +1597,18 @@ const levelChoices = [
     }),
   },
   {
+    id: "thunder-chain-capstone",
+    name: "连锁天雷",
+    desc: "连锁流毕业：普攻链路再扩 2 跳，主动技追链更稳更快。",
+    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "thunder", "chain"),
+    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "thunder", "chain", (skill) => {
+      skill.chain += 2;
+      skill.chainFocus += 1;
+      skill.chainRangeBonus += 24;
+      skill.chainNewTargetBias += 1;
+    }),
+  },
+  {
     id: "thunder-branch-storm-1",
     name: "雷云积势",
     desc: "锁定雷法到天罚流，掌心雷·天罚范围与持续时间提升。",
@@ -1289,6 +1626,17 @@ const levelChoices = [
     apply: (stateRef) => applySkillBranchUpgrade(stateRef, "thunder", "storm", (skill) => {
       skill.stormFocus += 1;
       skill.stormStrikeBonus += 1;
+    }),
+  },
+  {
+    id: "thunder-storm-capstone",
+    name: "九霄雷池",
+    desc: "落雷流毕业：主动技拉成长驻雷池，区域统治和开窗爆发会明显抬高。",
+    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "thunder", "storm"),
+    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "thunder", "storm", (skill) => {
+      skill.stormFocus += 1;
+      skill.stormDurationBonus += 1.2;
+      skill.stormStrikeBonus += 2;
     }),
   },
   {
@@ -1340,6 +1688,18 @@ const levelChoices = [
     }),
   },
   {
+    id: "flame-meteor-capstone",
+    name: "烬狱轮转",
+    desc: "伤害流毕业：火环内圈进入高热杀区，贴脸时更容易把敌人直接烧穿。",
+    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "flame", "meteor"),
+    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "flame", "meteor", (skill) => {
+      skill.damage *= 1.18;
+      skill.meteorFocus += 1;
+      skill.meteorBurstBonus += 1;
+      skill.burst = true;
+    }),
+  },
+  {
     id: "flame-zone-1",
     name: "焰域外推",
     desc: "锁定火环到封区流，留焰封区范围更大。",
@@ -1361,11 +1721,25 @@ const levelChoices = [
     }),
   },
   {
+    id: "flame-zone-capstone",
+    name: "焚身领域",
+    desc: "范围流毕业：火环半径永久扩大，主动技结束后仍会留下余焰继续封区。",
+    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "flame", "zone"),
+    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "flame", "zone", (skill) => {
+      skill.radius *= 1.4;
+      skill.zoneFocus += 1;
+      skill.zoneRadiusBonus += 16;
+      skill.zoneDurationBonus += 1;
+      skill.zoneSlowBonus += 0.05;
+    }),
+  },
+  {
     id: "guard-strong",
     name: "厚钟",
     desc: "护盾值 +35%。",
     canTake: (stateRef) => !!stateRef.player.skills.guard,
     apply: (stateRef) => applySkillBaseUpgrade(stateRef, "guard", (skill) => {
+      skill.baseMaxShield = (skill.baseMaxShield || skill.maxShield) * 1.35;
       skill.maxShield *= 1.35;
       skill.shield = Math.min(skill.maxShield, skill.shield * 1.35);
     }),
@@ -1394,6 +1768,7 @@ const levelChoices = [
     desc: "锁定金钟到护体流，护盾更厚且震荡更稳。",
     canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "guard", "bulwark"),
     apply: (stateRef) => applySkillBranchUpgrade(stateRef, "guard", "bulwark", (skill) => {
+      skill.baseMaxShield = (skill.baseMaxShield || skill.maxShield) * 1.18;
       skill.maxShield *= 1.18;
       skill.shield = Math.min(skill.maxShield, skill.shield + skill.maxShield * 0.35);
       skill.bulwarkFocus += 1;
@@ -1406,6 +1781,18 @@ const levelChoices = [
     canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "guard", "bulwark"),
     apply: (stateRef) => applySkillBranchUpgrade(stateRef, "guard", "bulwark", (skill) => {
       skill.recharge *= 0.86;
+      skill.bulwarkFocus += 1;
+    }),
+  },
+  {
+    id: "guard-bulwark-capstone",
+    name: "不灭金钟",
+    desc: "厚盾流毕业：破盾后会强撑一口气并重整护体，主动技更像稳场重置按钮。",
+    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "guard", "bulwark"),
+    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "guard", "bulwark", (skill) => {
+      skill.baseMaxShield *= 1.15;
+      skill.maxShield *= 1.15;
+      skill.shield = skill.maxShield;
       skill.bulwarkFocus += 1;
     }),
   },
@@ -1426,6 +1813,17 @@ const levelChoices = [
     canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "guard", "counter"),
     apply: (stateRef) => applySkillBranchUpgrade(stateRef, "guard", "counter", (skill) => {
       skill.counterFocus += 1;
+      skill.counterShockBonus += 1;
+    }),
+  },
+  {
+    id: "guard-counter-capstone",
+    name: "返天钟鸣",
+    desc: "弹反流毕业：主动技窗口会被拉长并显著抬高反震、反弹与借力反打收益。",
+    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "guard", "counter"),
+    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "guard", "counter", (skill) => {
+      skill.counterFocus += 1;
+      skill.counterWindowBonus += 0.35;
       skill.counterShockBonus += 1;
     }),
   },
@@ -1473,6 +1871,7 @@ window.__debug_apply_level_choice = (choiceId) => {
   if (!choice || !choice.canTake(state)) return false;
   state.routeShiftNotice = "";
   choice.apply(state);
+  handlePostChoiceRuntimeHooks(choice, state);
   render();
   return true;
 };
@@ -1481,13 +1880,14 @@ function scoreChoice(choice, main) {
   let score = 1;
   const skillTag = getChoiceSkillTag(choice);
   const skill = skillTag ? state.player.skills[skillTag] : null;
-  const branchMeta = getChoiceBranchMeta(choice);
+  const routeMeta = getChoiceRouteMeta(choice);
   if (choice.id.startsWith("new-") && state.player.skillOrder.length < 3) score += 3;
   if (main && choice.id.includes(main)) score += 3;
   if (skillTag && state.player.skills[skillTag] && skillTag !== main) score += 2.5;
-  if (branchMeta) {
-    score += 1.25;
+  if (routeMeta) {
+    score += routeMeta.kind === "capstone" ? 3.6 : 1.25;
     if (skill?.route) score += 1.6;
+    if (routeMeta.kind === "capstone" && skill?.route === routeMeta.routeId) score += 2.4;
   }
   if (choice.id === "life" && state.player.hp < state.player.maxHp * 0.55) score += 3;
   if (choice.id.startsWith("guard") && state.player.hp < state.player.maxHp * 0.6) score += 2;
@@ -1499,16 +1899,54 @@ function getChoiceSkillTag(choice) {
   return prefixes.find((prefix) => choice.id === `new-${prefix}` || choice.id.startsWith(`${prefix}-`)) || null;
 }
 
-function getChoiceBranchMeta(choice) {
-  if (choice.id.startsWith("sword-swarm-")) return { skillId: "sword", routeId: "swarm" };
-  if (choice.id.startsWith("sword-great-")) return { skillId: "sword", routeId: "greatsword" };
-  if (choice.id.startsWith("thunder-branch-chain-")) return { skillId: "thunder", routeId: "chain" };
-  if (choice.id.startsWith("thunder-branch-storm-")) return { skillId: "thunder", routeId: "storm" };
-  if (choice.id.startsWith("flame-meteor-")) return { skillId: "flame", routeId: "meteor" };
-  if (choice.id.startsWith("flame-zone-")) return { skillId: "flame", routeId: "zone" };
-  if (choice.id.startsWith("guard-bulwark-")) return { skillId: "guard", routeId: "bulwark" };
-  if (choice.id.startsWith("guard-counter-")) return { skillId: "guard", routeId: "counter" };
+function getChoiceRouteMeta(choice) {
+  if (choice.id === "sword-swarm-capstone") return { skillId: "sword", routeId: "swarm", kind: "capstone" };
+  if (choice.id === "sword-great-capstone") return { skillId: "sword", routeId: "greatsword", kind: "capstone" };
+  if (choice.id === "thunder-chain-capstone") return { skillId: "thunder", routeId: "chain", kind: "capstone" };
+  if (choice.id === "thunder-storm-capstone") return { skillId: "thunder", routeId: "storm", kind: "capstone" };
+  if (choice.id === "flame-meteor-capstone") return { skillId: "flame", routeId: "meteor", kind: "capstone" };
+  if (choice.id === "flame-zone-capstone") return { skillId: "flame", routeId: "zone", kind: "capstone" };
+  if (choice.id === "guard-bulwark-capstone") return { skillId: "guard", routeId: "bulwark", kind: "capstone" };
+  if (choice.id === "guard-counter-capstone") return { skillId: "guard", routeId: "counter", kind: "capstone" };
+  if (choice.id.startsWith("sword-swarm-")) return { skillId: "sword", routeId: "swarm", kind: "branch" };
+  if (choice.id.startsWith("sword-great-")) return { skillId: "sword", routeId: "greatsword", kind: "branch" };
+  if (choice.id.startsWith("thunder-branch-chain-")) return { skillId: "thunder", routeId: "chain", kind: "branch" };
+  if (choice.id.startsWith("thunder-branch-storm-")) return { skillId: "thunder", routeId: "storm", kind: "branch" };
+  if (choice.id.startsWith("flame-meteor-")) return { skillId: "flame", routeId: "meteor", kind: "branch" };
+  if (choice.id.startsWith("flame-zone-")) return { skillId: "flame", routeId: "zone", kind: "branch" };
+  if (choice.id.startsWith("guard-bulwark-")) return { skillId: "guard", routeId: "bulwark", kind: "branch" };
+  if (choice.id.startsWith("guard-counter-")) return { skillId: "guard", routeId: "counter", kind: "branch" };
   return null;
+}
+
+function getChoiceBranchMeta(choice) {
+  const routeMeta = getChoiceRouteMeta(choice);
+  return routeMeta?.kind === "branch"
+    ? { skillId: routeMeta.skillId, routeId: routeMeta.routeId }
+    : null;
+}
+
+function getChoiceCapstoneMeta(choice) {
+  const routeMeta = getChoiceRouteMeta(choice);
+  return routeMeta?.kind === "capstone"
+    ? { skillId: routeMeta.skillId, routeId: routeMeta.routeId }
+    : null;
+}
+
+function handlePostChoiceRuntimeHooks(choice, stateRef = state) {
+  if (stateRef !== state) return;
+  const routeMeta = getChoiceRouteMeta(choice);
+  if (routeMeta) {
+    const currentRoute = state.player.skills[routeMeta.skillId]?.route || null;
+    if (currentRoute === routeMeta.routeId) {
+      destinyRuntime.emit("skill_route_locked", routeMeta);
+    }
+    return;
+  }
+  const skillId = getChoiceSkillTag(choice);
+  if (skillId && state.player.skills[skillId]) {
+    destinyRuntime.getSkillRewriteState(skillId);
+  }
 }
 
 function getPendingBranchSkills(gameState) {
@@ -1526,6 +1964,24 @@ function getPendingBranchSkills(gameState) {
     })
     .filter(Boolean)
     .sort((a, b) => a.readyOrder - b.readyOrder || (skillIndex.get(a.skillId) || 0) - (skillIndex.get(b.skillId) || 0));
+}
+
+function getPendingCapstoneSkills(gameState) {
+  return gameState.player.skillOrder
+    .map((skillId) => {
+      const skill = gameState.player.skills[skillId];
+      const routeId = skill?.route || null;
+      if (!skill || !routeId) return null;
+      if ((skill.routePoints?.[routeId] || 0) < 2) return null;
+      if (skill.capstone === routeId) return null;
+      return {
+        skillId,
+        routeId,
+        focus: gameState.player.skillFocus[skillId] || 0,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.focus - a.focus);
 }
 
 function collectGuaranteedBranchEntries(scoredPool, pendingBranchSkills) {
@@ -1561,6 +2017,22 @@ function collectGuaranteedBranchEntries(scoredPool, pendingBranchSkills) {
   return guaranteed;
 }
 
+function collectGuaranteedCapstoneEntries(scoredPool, pendingCapstoneSkills) {
+  const guaranteed = [];
+  const takenIds = new Set();
+  pendingCapstoneSkills.forEach((pending) => {
+    if (guaranteed.length >= 2) return;
+    const entry = scoredPool.find((candidate) => {
+      const meta = getChoiceCapstoneMeta(candidate.choice);
+      return meta?.skillId === pending.skillId && meta.routeId === pending.routeId && !takenIds.has(candidate.choice.id);
+    });
+    if (!entry) return;
+    guaranteed.push(entry);
+    takenIds.add(entry.choice.id);
+  });
+  return guaranteed;
+}
+
 function availableChoices() {
   const pool = levelChoices.filter((choice) => choice.canTake(state));
   const main = chooseMainSkill(state);
@@ -1578,6 +2050,7 @@ function availableChoices() {
     pickedIds.add(entry.choice.id);
   };
 
+  collectGuaranteedCapstoneEntries(scoredPool, getPendingCapstoneSkills(state)).forEach((entry) => takeChoice(entry));
   collectGuaranteedBranchEntries(scoredPool, getPendingBranchSkills(state)).forEach((entry) => takeChoice(entry));
 
   const learnedSkillEntries = state.player.skillOrder
@@ -1607,6 +2080,7 @@ function openLevelUp() {
       onClick: () => {
         state.routeShiftNotice = "";
         choice.apply(state);
+        handlePostChoiceRuntimeHooks(choice, state);
         state.pendingLevelUps -= 1;
         closeModal();
         setToast(state.routeShiftNotice || `获得 ${choice.name}`);
@@ -1644,6 +2118,24 @@ function enemyDamageMult() {
   return 1 + (state.campaign.runIndex - 1) * 0.22 + (state.campaign.stageIndex - 1) * 0.1;
 }
 
+function isXianzhongThreatEnemy(enemy) {
+  return !!enemy && (enemy.type === "elite" || enemy.type === "charger" || enemy.type === "ranged");
+}
+
+function applyDestinyEnemySpawnModifiers(enemy) {
+  if (!enemy || enemy.destinySpawnAdjusted) return enemy;
+  enemy.destinySpawnAdjusted = true;
+  if (hasEquippedDestiny("xianzhong") && isXianzhongThreatEnemy(enemy) && enemy.type !== "boss") {
+    const hpMult = DESTINY_RUNTIME_RULES.xianzhong?.highThreatHpMult || 1;
+    const damageMult = DESTINY_RUNTIME_RULES.xianzhong?.highThreatDamageMult || 1;
+    enemy.hp *= hpMult;
+    enemy.maxHp *= hpMult;
+    enemy.damage *= damageMult;
+    enemy.xianzhongRiskBoosted = true;
+  }
+  return enemy;
+}
+
 function spawnEnemy(typeName, forcedAlign = null) {
   const template = enemies[typeName];
   const edge = Math.floor(Math.random() * 4);
@@ -1654,7 +2146,7 @@ function spawnEnemy(typeName, forcedAlign = null) {
   if (edge === 2) { x = Math.random() * WIDTH; y = -30; }
   if (edge === 3) { x = Math.random() * WIDTH; y = HEIGHT + 30; }
   const color = forcedAlign || (Math.random() < 0.5 ? "white" : "black");
-  state.enemies.push({
+  const enemy = {
     type: typeName,
     x,
     y,
@@ -1668,13 +2160,14 @@ function spawnEnemy(typeName, forcedAlign = null) {
     dashTimer: (template.dashCooldown || 1.4) + Math.random() * 0.5,
     attackTimer: template.meleeCooldown || 0.5,
     burn: 0,
-  });
+  };
+  state.enemies.push(applyDestinyEnemySpawnModifiers(enemy));
 }
 
 function spawnMiniBoss() {
   const template = enemies.elite;
   const color = Math.random() < 0.5 ? "white" : "black";
-  state.enemies.push({
+  const enemy = {
     type: "elite",
     x: WIDTH / 2,
     y: 90,
@@ -1689,12 +2182,14 @@ function spawnMiniBoss() {
     attackTimer: template.meleeCooldown || 0.5,
     burn: 0,
     isMiniBoss: true,
-  });
+  };
+  state.enemies.push(applyDestinyEnemySpawnModifiers(enemy));
   state.campaign.miniBossSpawned = true;
   setToast("小Boss现身");
 }
 
 function updateSpawn(dt) {
+  if (state.debugSpawnSuppressed) return;
   if (state.bossFight || state.campaign.stageType === "boss" || state.campaign.miniBossSpawned) return;
   state.spawnTimer -= dt;
   if (state.spawnTimer <= 0) {
@@ -1722,26 +2217,71 @@ function updateSpawn(dt) {
   }
 }
 
+function getBossRoundConfig(runIndex = state.campaign.runIndex) {
+  return BALANCE.bossRoundTable?.[runIndex] || BALANCE.bossRoundTable?.[3] || null;
+}
+
+function getBossPhaseConfig(boss = state.boss) {
+  if (!boss?.config?.phases?.length) return null;
+  const index = clamp((boss.phase || 1) - 1, 0, boss.config.phases.length - 1);
+  return boss.config.phases[index];
+}
+
+function getBossSkillConfig(skillId, boss = state.boss) {
+  return boss?.config?.skills?.[skillId] || null;
+}
+
+function clearBossIntent(boss) {
+  if (!boss) return;
+  boss.intent = null;
+  boss.intentLabel = "";
+  boss.intentCategory = null;
+  boss.intentCounterable = false;
+}
+
 function spawnBoss() {
+  const config = getBossRoundConfig(state.campaign.runIndex);
+  const phaseConfig = config?.phases?.[0] || null;
+  const bossScale = 1 + (state.campaign.runIndex - 1) * 0.18;
+  const baseDamageScale = 1 + (state.campaign.runIndex - 1) * 0.1;
   state.bossFight = true;
   state.phaseLabel = `第${state.campaign.runIndex}轮 大Boss`;
   state.enemies = [];
   state.enemyProjectiles = [];
+  state.projectiles = [];
+  state.pulses = [];
+  state.activeEffects = state.activeEffects.filter((effect) => !effect.fromBoss);
   state.campaign.bossSpawned = true;
-  const bossScale = 1 + (state.campaign.runIndex - 1) * 0.45;
   state.boss = {
     type: "boss",
+    bossId: config?.id || `boss-${state.campaign.runIndex}`,
+    name: config?.name || enemies.boss.name,
+    role: config?.role || "Boss",
     x: WIDTH / 2,
     y: 90,
-    hp: enemies.boss.hp * bossScale,
-    maxHp: enemies.boss.hp * bossScale,
-    damage: enemies.boss.damage * (1 + (state.campaign.runIndex - 1) * 0.2),
-    radius: enemies.boss.radius,
+    hp: enemies.boss.hp * bossScale * (config?.hpMult || 1),
+    maxHp: enemies.boss.hp * bossScale * (config?.hpMult || 1),
+    damage: enemies.boss.damage * baseDamageScale * (config?.damageMult || 1),
+    radius: config?.radius || enemies.boss.radius,
+    speed: enemies.boss.speed * (config?.speedMult || 1),
     phase: 1,
-    attackTimer: enemies.boss.attackCooldowns.phase1,
-    pattern: 0,
+    phaseThresholds: [...(config?.phaseThresholds || [])],
+    phaseNames: (config?.phases || []).map((phase, index) => phase.name || `阶段${index + 1}`),
+    config,
+    attackTimer: phaseConfig?.cooldown || 1,
+    contactTimer: 0.2,
+    exposedTimer: 0.35,
+    sequenceCursor: 0,
+    ringMode: "outer",
+    phaseChangedAt: state.time,
+    phaseStartedAt: state.time,
+    lastSkillId: null,
+    intent: null,
+    intentLabel: "",
+    intentCategory: null,
+    intentCounterable: false,
   };
-  setToast("Boss 降临");
+  setToast(`${state.boss.name} 降临`);
 }
 
 function nearestEnemies(count) {
@@ -1776,29 +2316,42 @@ function pulse(x, y, radius, damage, kind, affectsBoss = true, extra = null) {
 }
 
 function dealDamage(target, amount, source = "player") {
-  const finalAmount = amount * getExecuteDamageMult(target);
+  const executeMult = getExecuteDamageMult(target);
+  const finalAmount = amount * executeMult;
   target.hp -= finalAmount;
   if (source === "player" && distance(state.player, target) <= PATH_COMBAT.gain.meleeRange) {
     maybeTriggerBlackMomentum("close");
   }
-  if (target.type === "boss" && target.hp <= target.maxHp * enemies.boss.phaseTwoAt && target.phase === 1) {
-    target.phase = 2;
-    target.attackTimer = 0.8;
-    setToast("Boss 二阶段");
-  }
-  if (target.type === "boss" && target.hp <= target.maxHp * enemies.boss.phaseThreeAt && target.phase === 2) {
-    target.phase = 3;
-    target.attackTimer = 0.55;
-    setToast("Boss 三阶段");
+  if (target.type === "boss") {
+    const thresholds = target.phaseThresholds || [];
+    while (thresholds[target.phase - 1] != null && target.hp > 0 && target.hp <= target.maxHp * thresholds[target.phase - 1]) {
+      target.phase += 1;
+      target.sequenceCursor = 0;
+      target.attackTimer = target.config?.phaseShiftPause || 0.72;
+      target.exposedTimer = Math.max(target.exposedTimer || 0, 0.28);
+      target.phaseChangedAt = state.time;
+      target.phaseStartedAt = state.time;
+      clearBossIntent(target);
+      state.enemyProjectiles = state.enemyProjectiles.filter((projectile) => !projectile.fromBoss);
+      state.activeEffects = state.activeEffects.filter((effect) => !effect.fromBoss);
+      state.pulses = state.pulses.filter((pulseItem) => !pulseItem.fromBoss);
+      const phaseName = target.phaseNames?.[target.phase - 1] || `第${target.phase}阶段`;
+      setToast(`${target.name}·${phaseName}`);
+    }
   }
   if (target.hp <= 0) {
+    const killRuntimePayload = buildKillRuntimePayload(target, source, {
+      isExecuteKill: executeMult > 1,
+    });
     if (target.type === "boss") {
-      triggerQingxinDestiny(target);
-      recordDandingTrigger("boss");
+      destinyRuntime.emit("kill_resolved", killRuntimePayload);
       healFromBlackMeleeKill(target);
       finishGame(RESULT_CLEAR);
     } else {
-      killEnemy(target, source);
+      killEnemy(target, {
+        source,
+        isExecuteKill: executeMult > 1,
+      });
     }
   }
 }
@@ -1858,6 +2411,8 @@ function castThunder(skill) {
   if (!target) return;
   const routeState = getSkillRouteState("thunder", skill);
   const routeVfx = getSkillRouteVfx("thunder", skill);
+  const rewrite = getThunderRewriteProfile();
+  const capstoneChain = hasRouteCapstone("thunder", skill, "chain");
   const damage = getThunderDamage(skill);
   strikeEnemy(target, damage, state.player, {
     pulseKind: routeVfx.auto?.strikePulseKind || "thunder",
@@ -1866,9 +2421,9 @@ function castThunder(skill) {
     routeStyle: routeState?.routeId || null,
   });
   state.enemies
-    .filter((enemy) => enemy !== target)
+    .filter((enemy) => enemy !== target && distance(enemy, target) <= skill.splash + rewrite.chainRangeBonus)
     .sort((a, b) => distance(a, target) - distance(b, target))
-    .slice(0, skill.chain)
+    .slice(0, skill.chain + rewrite.chainCountBonus + (capstoneChain ? 2 : 0))
     .forEach((enemy) => strikeEnemy(enemy, damage * 0.65, target, {
       pulseKind: routeVfx.auto?.strikePulseKind || "thunder",
       nodePulseKind: routeVfx.auto?.nodePulseKind || null,
@@ -1882,28 +2437,31 @@ function castActiveThunder(skill) {
   if (level <= 0) return false;
   const routeState = getSkillRouteState("thunder", skill);
   const routeVfx = getSkillRouteVfx("thunder", skill);
+  const rewrite = getThunderRewriteProfile();
   if (routeState?.routeId === "chain") {
     const sacrificeBoost = getActiveSacrificeBoost();
+    const capstoneChain = hasRouteCapstone("thunder", skill, "chain");
     const opener = pickPriorityTarget(state.player, { preferLowHp: true }) || nearestEnemyFromPoint(state.player);
     if (!opener) return false;
-    const maxJumps = 10 + level * 2 + getSkillBranchCount(skill, "chain") * 2;
+    const maxJumps = 10 + level * 2 + getSkillBranchCount(skill, "chain") * 2 + rewrite.activeJumpBonus + (capstoneChain ? 4 : 0);
+    const duration = 1.8 + level * 0.14 + skill.chainFocus * 0.18 + rewrite.activeDurationBonus + (capstoneChain ? 0.45 : 0);
     state.activeEffects.push({
       kind: "chain-lightning-storm",
       x: opener.x,
       y: opener.y,
-      time: 1.8 + level * 0.14 + skill.chainFocus * 0.18,
-      duration: 1.8 + level * 0.14 + skill.chainFocus * 0.18,
+      time: duration,
+      duration,
       tickTimer: 0.04,
-      tickInterval: Math.max(0.07, 0.15 - level * 0.006),
-      damage: computeDamage(getThunderDamage(skill) * (1.28 + level * 0.12) * sacrificeBoost),
-      decay: 0.9,
+      tickInterval: Math.max(0.06, 0.15 - level * 0.006 - (capstoneChain ? 0.02 : 0)),
+      damage: computeDamage(getThunderDamage(skill) * (1.28 + level * 0.12 + (capstoneChain ? 0.08 : 0)) * sacrificeBoost),
+      decay: capstoneChain ? 0.92 : 0.9,
       maxJumps,
       jumpCount: 0,
-      chainRange: 180 + level * 12 + skill.chainRangeBonus,
+      chainRange: (180 + level * 12 + skill.chainRangeBonus + rewrite.chainRangeBonus) * rewrite.activeRangeMult,
       currentTarget: opener,
       visited: new Set(),
       hitCounts: new Map(),
-      newTargetBias: skill.chainNewTargetBias || 0,
+      newTargetBias: (skill.chainNewTargetBias || 0) + rewrite.newTargetBias,
       palette: routeVfx.palette || null,
       routeStyle: routeState.routeId,
     });
@@ -1920,32 +2478,41 @@ function castActiveThunder(skill) {
       palette: routeVfx.palette || null,
       routeStyle: routeState.routeId,
     });
-    setToast(`连锁雷暴 (${level})`);
+    setToast(`${capstoneChain ? "连锁天雷" : "连锁雷暴"} (${level})`);
     return true;
   }
-  const radius = Math.min(WIDTH, HEIGHT) * 0.46;
+  const capstoneStorm = hasRouteCapstone("thunder", skill, "storm");
+  const radius = Math.min(WIDTH, HEIGHT) * 0.46 * rewrite.activeRangeMult * rewrite.activeRadiusMult * (capstoneStorm ? 1.12 : 1);
   const extraDuration = hasGuardFocus() ? 1 : 0;
   const sacrificeBoost = getActiveSacrificeBoost();
   const damage = getThunderDamage(skill) * sacrificeBoost;
   const target = resolveThunderStormTarget();
+  const duration = Math.max(
+    capstoneStorm ? 5 : 0,
+    2 + extraDuration + (skill.stormDurationBonus || 0) + rewrite.activeDurationBonus,
+  );
   state.pulses.push({
     x: target.x,
     y: target.y,
     radius,
-    damage: computeDamage(damage * (1.55 + level * 0.22)),
+    damage: computeDamage(damage * (1.55 + level * 0.22 + (capstoneStorm ? 0.12 : 0))),
     kind: "thunderstorm",
-    time: 2 + extraDuration + (skill.stormDurationBonus || 0),
-    duration: 2 + extraDuration + (skill.stormDurationBonus || 0),
+    time: duration,
+    duration,
     hit: new Set(),
     affectsBoss: true,
     tickTimer: 0.18,
-    tickInterval: Math.max(0.16, 0.34 - level * 0.02),
-    strikeCount: 2 + level + (skill.stormStrikeBonus || 0),
+    tickInterval: Math.max(0.14, 0.34 - level * 0.02 - (capstoneStorm ? 0.04 : 0)),
+    strikeCount: 2 + level + (skill.stormStrikeBonus || 0) + rewrite.activeStrikeBonus + (capstoneStorm ? 2 : 0),
+    bossOpenerMult: rewrite.bossOpenerMult,
+    bossOpenerConsumed: false,
+    heavyFirstHitMult: capstoneStorm ? 1.4 : 1,
+    heavyTargetsHit: new Set(),
     palette: routeVfx.palette || null,
     routeStyle: routeState?.routeId || "storm",
     placement: target.reason,
   });
-  setToast(`掌心雷·天罚 (${level})`);
+  setToast(`${capstoneStorm ? "九霄雷池" : "掌心雷·天罚"} (${level})`);
   return true;
 }
 
@@ -1954,13 +2521,18 @@ function castActiveSword(skill) {
   if (level <= 0) return false;
   const routeState = getSkillRouteState("sword", skill);
   const routeVfx = getSkillRouteVfx("sword", skill);
+  const rewrite = getSwordRewriteProfile();
   if (routeState?.routeId === "greatsword") {
     const sacrificeBoost = getActiveSacrificeBoost();
+    const capstoneGreat = hasRouteCapstone("sword", skill, "greatsword");
     const lane = resolveGreatswordLane(skill);
-    const width = 30 + level * 4 + skill.greatswordWidthBonus * 10;
-    const duration = 2.3 + level * 0.18 + skill.greatswordDurationBonus;
+    const width = (30 + level * 4 + skill.greatswordWidthBonus * 10 + (capstoneGreat ? 16 : 0)) * rewrite.activeWidthMult;
+    const duration = Math.max(
+      capstoneGreat ? 4 : 0,
+      2.3 + level * 0.18 + skill.greatswordDurationBonus + rewrite.activeDurationBonus,
+    );
     const tickInterval = Math.max(0.18, 0.34 - level * 0.015);
-    const baseDamage = skill.damage * (1.8 + level * 0.24) * sacrificeBoost;
+    const baseDamage = skill.damage * (1.8 + level * 0.24 + (capstoneGreat ? 0.14 : 0)) * sacrificeBoost * rewrite.activeDamageMult;
     state.activeEffects.push({
       kind: "greatsword-field",
       x: lane.start.x,
@@ -1979,17 +2551,18 @@ function castActiveSword(skill) {
       tickTimer: 0.05,
       tickInterval,
       damage: computeDamage(baseDamage),
-      pressureBonus: skill.greatswordPressureBonus || 0,
+      pressureBonus: (skill.greatswordPressureBonus || 0) + rewrite.pressureBonus + (capstoneGreat ? 0.16 : 0),
       oscillation: 0,
       focusType: lane.priorityTarget?.type || (lane.focus?.count ? "cluster" : "forward"),
       hitCooldowns: new Map(),
       palette: routeVfx.palette || null,
       routeStyle: routeState.routeId,
+      capstone: capstoneGreat,
     });
     state.pulses.push({
       x: lane.start.x,
       y: lane.start.y,
-      radius: 64 + level * 4,
+      radius: 64 + level * 4 + (capstoneGreat ? 10 : 0),
       damage: 0,
       kind: "greatsword-cast",
       time: 0.42,
@@ -2004,12 +2577,16 @@ function castActiveSword(skill) {
     return true;
   }
   const sacrificeBoost = getActiveSacrificeBoost();
-  const count = Math.round((8 + level * 2 + (hasGuardFocus() ? 1 : 0)) * (1 + (sacrificeBoost - 1) * 0.35));
-  const damage = computeDamage(skill.damage * (1.35 + level * 0.18) * sacrificeBoost);
+  const capstoneSwarm = hasRouteCapstone("sword", skill, "swarm");
+  const count = Math.round(
+    (8 + level * 2 + (hasGuardFocus() ? 1 : 0) + rewrite.activeVolleyBonus + (capstoneSwarm ? 6 : 0))
+    * (1 + (sacrificeBoost - 1) * 0.35),
+  );
+  const damage = computeDamage(skill.damage * (1.35 + level * 0.18 + (capstoneSwarm ? 0.04 : 0)) * sacrificeBoost * rewrite.activeDamageMult);
   state.pulses.push({
     x: state.player.x,
     y: state.player.y,
-    radius: 34 + level * 3,
+    radius: 34 + level * 3 + (capstoneSwarm ? 10 : 0),
     damage: 0,
     kind: "sword-burst",
     time: 0.26,
@@ -2023,29 +2600,30 @@ function castActiveSword(skill) {
   const totalCount = count + (skill.swarmVolleyBonus || 0);
   for (let i = 0; i < totalCount; i += 1) {
     const angle = (Math.PI * 2 * i) / totalCount;
+    const activeProjectileSpeed = (220 + level * 18) * rewrite.activeProjectileSpeedMult;
     state.projectiles.push({
       x: state.player.x + Math.cos(angle) * 18,
       y: state.player.y + Math.sin(angle) * 18,
-      vx: Math.cos(angle) * 220,
-      vy: Math.sin(angle) * 220,
-      radius: 7,
+      vx: Math.cos(angle) * activeProjectileSpeed,
+      vy: Math.sin(angle) * activeProjectileSpeed,
+      radius: 7 * rewrite.projectileRadiusMult,
       damage,
       pierce: 1 + Math.floor(level / 2),
       life: 2.8 + level * 0.18,
       color: routeVfx.palette?.primary || "#e8d79c",
       kind: "sword-active",
       homing: true,
-      turnRate: 7 + level * 0.4,
-      speed: 220 + level * 18,
+      turnRate: (7 + level * 0.4) * rewrite.turnRateMult,
+      speed: activeProjectileSpeed,
       routeStyle: routeVfx.auto?.style || "swarm",
       palette: routeVfx.palette || null,
-      visualScale: routeVfx.auto?.projectileScale || 1.16,
+      visualScale: (routeVfx.auto?.projectileScale || 1.16) * rewrite.projectileRadiusMult,
       trailLength: (routeVfx.auto?.trailLength || 20) + 6,
       trailWidth: Math.max(3.2, routeVfx.auto?.trailWidth || 3.2),
       impactKind: routeVfx.auto?.impactPulseKind || "sword-hit",
     });
   }
-  setToast(`万剑归宗 (${level})`);
+  setToast(`${capstoneSwarm ? "万剑齐发" : "万剑归宗"} (${level})`);
   return true;
 }
 
@@ -2054,10 +2632,12 @@ function castActiveGuard(skill) {
   if (level <= 0) return false;
   const routeState = getSkillRouteState("guard", skill);
   const routeVfx = getSkillRouteVfx("guard", skill);
+  const rewrite = syncGuardRewriteState(skill);
   if (routeState?.routeId === "counter") {
     const sacrificeBoost = getActiveSacrificeBoost();
-    const duration = 1.25 + level * 0.08 + skill.counterWindowBonus;
-    const radius = 92 + level * 6 + skill.counterFocus * 8;
+    const capstoneCounter = hasRouteCapstone("guard", skill, "counter");
+    const duration = Math.max(capstoneCounter ? 4 : 0, 1.25 + level * 0.08 + skill.counterWindowBonus);
+    const radius = 92 + level * 6 + skill.counterFocus * 8 + (capstoneCounter ? 12 : 0);
     state.activeEffects.push({
       kind: "guard-counter-window",
       x: state.player.x,
@@ -2065,13 +2645,17 @@ function castActiveGuard(skill) {
       radius,
       time: duration,
       duration,
-      damage: computeDamage((38 + skill.maxShield * 0.18 + level * 12 + skill.counterShockBonus * 10) * sacrificeBoost),
-      finalDamage: computeDamage((56 + skill.maxShield * 0.28 + level * 16 + skill.counterShockBonus * 14) * sacrificeBoost),
+      damage: computeDamage((38 + skill.maxShield * 0.18 + level * 12 + skill.counterShockBonus * 10) * sacrificeBoost * rewrite.counterShockMult * (capstoneCounter ? 2 : 1)),
+      finalDamage: computeDamage((56 + skill.maxShield * 0.28 + level * 16 + skill.counterShockBonus * 14) * sacrificeBoost * rewrite.finaleDamageMult * (capstoneCounter ? 1.7 : 1)),
       reflectedCount: 0,
       shockCount: 0,
       shockCooldown: 0.05,
+      pushMult: rewrite.counterPushMult * (capstoneCounter ? 1.4 : 1),
+      reflectDamageMult: rewrite.reflectDamageMult,
+      reflectGuaranteed: rewrite.reflectGuaranteed + (capstoneCounter ? 2 : 0),
       palette: routeVfx.palette || null,
       routeStyle: routeState.routeId,
+      capstone: capstoneCounter,
     });
     state.pulses.push({
       x: state.player.x,
@@ -2090,9 +2674,13 @@ function castActiveGuard(skill) {
     return true;
   }
   const sacrificeBoost = getActiveSacrificeBoost();
-  const radius = (110 + level * 16 + skill.bulwarkFocus * 10) * (1 + (sacrificeBoost - 1) * 0.2);
+  const capstoneBulwark = hasRouteCapstone("guard", skill, "bulwark");
+  const radius = (110 + level * 16 + skill.bulwarkFocus * 10 + (capstoneBulwark ? 18 : 0)) * rewrite.bulwarkRadiusMult * (1 + (sacrificeBoost - 1) * 0.2);
   const damage = computeDamage((48 + skill.maxShield * 0.35 + level * 18 + skill.bulwarkFocus * 10) * sacrificeBoost);
   const pushScale = hasGuardFocus() ? 1.35 : 1;
+  if (capstoneBulwark) {
+    skill.shield = Math.min(skill.maxShield, skill.shield + skill.maxShield * 0.35);
+  }
   pulse(state.player.x, state.player.y, radius, damage, "guard", true, {
     time: 0.34,
     duration: 0.34,
@@ -2104,10 +2692,11 @@ function castActiveGuard(skill) {
     x: state.player.x,
     y: state.player.y,
     radius: radius * 0.82,
-    time: 0.58,
-    duration: 0.58,
+    time: 0.58 + rewrite.barrierShellDurationBonus + (capstoneBulwark ? 0.4 : 0),
+    duration: 0.58 + rewrite.barrierShellDurationBonus + (capstoneBulwark ? 0.4 : 0),
     palette: routeVfx.palette || null,
     routeStyle: routeState?.routeId || "bulwark",
+    capstone: capstoneBulwark,
   });
   state.enemies.forEach((enemy) => {
     const dx = enemy.x - state.player.x;
@@ -2129,7 +2718,7 @@ function castActiveGuard(skill) {
       state.boss.y = clamp(state.boss.y + (dy / dist) * push, 60, HEIGHT - 60);
     }
   }
-  setToast(`金钟震荡 (${level})`);
+  setToast(`${capstoneBulwark ? "不灭金钟" : "金钟震荡"} (${level})`);
   return true;
 }
 
@@ -2138,13 +2727,15 @@ function castActiveFlame(skill) {
   if (level <= 0) return false;
   const routeState = getSkillRouteState("flame", skill);
   const routeVfx = getSkillRouteVfx("flame", skill);
+  const rewrite = getFlameRewriteProfile();
   if (routeState?.routeId === "zone") {
     const sacrificeBoost = getActiveSacrificeBoost();
+    const capstoneZone = hasRouteCapstone("flame", skill, "zone");
     const target = resolveFlameZoneTarget();
-    const radius = 86 + level * 8 + skill.zoneRadiusBonus;
-    const duration = 3 + level * 0.18 + skill.zoneDurationBonus;
-    const slow = Math.min(0.55, 0.2 + level * 0.025 + skill.zoneSlowBonus);
-    const damage = computeDamage(skill.damage * (1.2 + level * 0.15) * sacrificeBoost);
+    const radius = (86 + level * 8 + skill.zoneRadiusBonus + rewrite.zoneRadiusBonus) * rewrite.outerRadiusMult;
+    const duration = 3 + level * 0.18 + skill.zoneDurationBonus + rewrite.zoneDurationBonus + rewrite.lingerDurationBonus + (capstoneZone ? 0.8 : 0);
+    const slow = Math.min(0.55, 0.2 + level * 0.025 + skill.zoneSlowBonus + rewrite.zoneSlowBonus);
+    const damage = computeDamage(skill.damage * rewrite.innerDamageMult * (1.2 + level * 0.15) * sacrificeBoost);
     state.pulses.push({
       x: target.x,
       y: target.y,
@@ -2169,21 +2760,28 @@ function castActiveFlame(skill) {
       tickInterval: Math.max(0.24, 0.44 - level * 0.02),
       damage,
       slow,
-      burnDuration: 1.7 + level * 0.08,
+      burnDuration: 1.7 + level * 0.08 + rewrite.burnDurationBonus + rewrite.lingerDurationBonus,
       hitCooldowns: new Map(),
       placement: target.reason,
       palette: routeVfx.palette || null,
       routeStyle: routeState.routeId,
+      leaveEmbers: capstoneZone,
+      emberDuration: capstoneZone ? 3 : 0,
+      emberRadius: radius * 0.72,
+      emberDamage: damage * 0.58,
+      emberSlow: slow * 0.7,
     });
-    setToast(`留焰封区 (${level})`);
+    setToast(`${capstoneZone ? "焚身领域" : "留焰封区"} (${level})`);
     return true;
   }
   const sacrificeBoost = getActiveSacrificeBoost();
-  const meteorCount = 2 + level + (skill.meteorFocus || 0);
+  const capstoneMeteor = hasRouteCapstone("flame", skill, "meteor");
+  const meteorCount = 2 + level + (skill.meteorFocus || 0) + rewrite.meteorCountBonus;
   const waveCount = 3 + (hasGuardFocus() ? 1 : 0);
   const waveInterval = 0.7;
   const waveDuration = 0.7;
-  const damage = computeDamage(skill.damage * (3 + level * 0.45 + (skill.meteorFocus || 0) * 0.18) * sacrificeBoost);
+  const damage = computeDamage(skill.damage * rewrite.innerDamageMult * rewrite.meteorDamageMult * (3 + level * 0.45 + (skill.meteorFocus || 0) * 0.18 + (capstoneMeteor ? 0.25 : 0)) * sacrificeBoost);
+  const meteorBurstBonus = (skill.meteorBurstBonus || 0) + rewrite.meteorBurstBonus;
   const field = resolveMeteorFieldTarget();
   const baseRotation = Math.random() * Math.PI * 2;
   for (let wave = 0; wave < waveCount; wave += 1) {
@@ -2210,15 +2808,16 @@ function castActiveFlame(skill) {
         fromY: -120 - (wave * meteorCount + i) * 36,
         impactAt: 0.72,
         landed: false,
+        burnDuration: 4 + rewrite.burnDurationBonus,
         palette: routeVfx.palette || null,
         routeStyle: routeState?.routeId || "meteor",
         wave,
       });
-      if (skill.meteorBurstBonus > 0) {
+      if (meteorBurstBonus > 0) {
         state.pulses.push({
           x: clamp(field.x + jitterX * 0.6, 30, WIDTH - 30),
           y: clamp(field.y + jitterY * 0.6, 30, HEIGHT - 30),
-          radius: 34 + skill.meteorBurstBonus * 4,
+          radius: 34 + meteorBurstBonus * 4,
           damage: damage * 0.35,
           kind: routeVfx.active?.burstPulseKind || "meteor-burst",
           time: waveDuration,
@@ -2232,7 +2831,26 @@ function castActiveFlame(skill) {
       }
     }
   }
-  setToast(`陨火天坠 (${level})`);
+  if (capstoneMeteor) {
+    state.activeEffects.push({
+      kind: "flame-zone",
+      x: field.x,
+      y: field.y,
+      radius: 48 + level * 4,
+      time: 1.8,
+      duration: 1.8,
+      tickTimer: 0.05,
+      tickInterval: 0.22,
+      damage: damage * 0.4,
+      slow: 0,
+      burnDuration: 2.8 + rewrite.burnDurationBonus,
+      hitCooldowns: new Map(),
+      placement: field.reason,
+      palette: routeVfx.palette || null,
+      routeStyle: "meteor",
+    });
+  }
+  setToast(`${capstoneMeteor ? "烬狱轮转" : "陨火天坠"} (${level})`);
   return true;
 }
 
@@ -2242,7 +2860,11 @@ function tryUseActiveSlot(slotIndex) {
   if (!skillId) return false;
   const skill = state.player.skills[skillId];
   if (!skill || !isActiveUnlocked(skill) || skill.activeTimer > 0) return false;
-  if (hasEquippedDestiny("ranshou")) prepareRanshouActiveBoost();
+  destinyRuntime.emit("active_cast_started", {
+    skillId,
+    routeId: skill.route || null,
+    slotIndex,
+  });
   let fired = false;
   if (skillId === "thunder") fired = castActiveThunder(skill);
   else if (skillId === "sword") fired = castActiveSword(skill);
@@ -2269,9 +2891,12 @@ function updateSkills(dt) {
     const skill = state.player.skills.sword;
     const routeState = getSkillRouteState("sword", skill);
     const routeVfx = getSkillRouteVfx("sword", skill);
+    const rewrite = getSwordRewriteProfile();
+    const capstoneSwarm = hasRouteCapstone("sword", skill, "swarm");
+    const capstoneGreat = hasRouteCapstone("sword", skill, "greatsword");
     skill.timer -= dt * castScale / state.player.globalCooldown;
     if (skill.timer <= 0) {
-      const targets = getSwordTargets(skill.projectiles);
+      const targets = getSwordTargets(skill.projectiles, rewrite.autoVolleyBonus);
       if (targets.length) {
         const aim = targets.reduce((acc, target) => {
           acc.x += target.x;
@@ -2302,22 +2927,24 @@ function updateSkills(dt) {
         const sideIndex = targets.indexOf(enemy) - (targets.length - 1) / 2;
         const sideAngle = Math.atan2(enemy.y - state.player.y, enemy.x - state.player.x) + Math.PI / 2;
         const offsetStrength = routeStyle === "greatsword" ? 6 : 12;
+        const projectileSpeed = 380 * rewrite.projectileSpeedMult * (capstoneSwarm ? 1.06 : capstoneGreat ? 0.88 : 1);
+        const projectileRadius = 6 * rewrite.projectileRadiusMult * (capstoneGreat ? 1.18 : 1);
         state.projectiles.push({
           x: state.player.x + Math.cos(sideAngle) * sideIndex * offsetStrength,
           y: state.player.y + Math.sin(sideAngle) * sideIndex * offsetStrength,
-          vx: ((enemy.x - state.player.x) / dist) * 380,
-          vy: ((enemy.y - state.player.y) / dist) * 380,
-          radius: 6,
-          damage: computeDamage(skill.damage),
+          vx: ((enemy.x - state.player.x) / dist) * projectileSpeed,
+          vy: ((enemy.y - state.player.y) / dist) * projectileSpeed,
+          radius: projectileRadius,
+          damage: computeDamage(skill.damage * rewrite.damageMult * (capstoneGreat ? 1.08 : 1)),
           pierce: skill.pierce,
           life: 1.5,
           color: routeVfx.palette?.primary || "#d8c88d",
           kind: "sword",
           routeStyle,
           palette: routeVfx.palette || null,
-          visualScale: routeVfx.auto?.projectileScale || 1,
-          trailLength: routeVfx.auto?.trailLength || 18,
-          trailWidth: routeVfx.auto?.trailWidth || 2.4,
+          visualScale: (routeVfx.auto?.projectileScale || 1) * rewrite.projectileRadiusMult * (capstoneGreat ? 1.12 : capstoneSwarm ? 1.06 : 1),
+          trailLength: (routeVfx.auto?.trailLength || 18) + (capstoneGreat ? 4 : capstoneSwarm ? 2 : 0),
+          trailWidth: (routeVfx.auto?.trailWidth || 2.4) + (capstoneGreat ? 0.8 : capstoneSwarm ? 0.2 : 0),
           impactKind: routeVfx.auto?.impactPulseKind || "sword-hit",
         });
       });
@@ -2326,8 +2953,10 @@ function updateSkills(dt) {
   }
   if (state.player.skills.thunder) {
     const skill = state.player.skills.thunder;
+    const rewrite = getThunderRewriteProfile();
     skill.timer -= dt * castScale / state.player.globalCooldown;
     if (skill.timer <= 0) {
+      skill.chain = Math.max(0, skill.chain);
       castThunder(skill);
       skill.timer = skill.cooldown * state.player.globalCooldown;
     }
@@ -2336,23 +2965,36 @@ function updateSkills(dt) {
     const skill = state.player.skills.flame;
     const routeState = getSkillRouteState("flame", skill);
     const routeVfx = getSkillRouteVfx("flame", skill);
+    const rewrite = getFlameRewriteProfile();
+    const capstoneMeteor = hasRouteCapstone("flame", skill, "meteor");
     skill.timer -= dt * castScale;
     if (skill.timer <= 0) {
-      pulse(state.player.x, state.player.y, skill.radius, computeDamage(skill.damage), "flame", true, {
+      pulse(state.player.x, state.player.y, skill.radius * rewrite.outerRadiusMult, computeDamage(skill.damage * rewrite.innerDamageMult), "flame", true, {
         routeStyle: routeState?.routeId || routeVfx.auto?.pulseStyle || "meteor",
         palette: routeVfx.palette || null,
+        burnDuration: 2.5 + rewrite.burnDurationBonus + rewrite.lingerDurationBonus,
+        innerRadius: capstoneMeteor ? skill.radius * 0.6 : 0,
+        innerDamageMult: capstoneMeteor ? 1.8 : 1,
       });
       skill.timer = skill.tick;
     }
   }
   if (state.player.skills.guard) {
     const skill = state.player.skills.guard;
+    const rewrite = syncGuardRewriteState(skill);
+    skill.bulwarkLastStandCooldown = Math.max(0, skill.bulwarkLastStandCooldown || 0);
+    if (skill.bulwarkLastStandCooldown > 0) skill.bulwarkLastStandCooldown -= dt;
+    if (skill.shield > 0 && skill.route === "bulwark" && rewrite.shieldRegenPctPerSecond > 0) {
+      skill.shield = Math.min(skill.maxShield, skill.shield + skill.maxShield * rewrite.shieldRegenPctPerSecond * dt);
+    }
     if (skill.shield <= 0) {
       skill.timer -= dt;
       if (skill.timer <= 0) {
+        const previousShield = skill.shield;
         const routeState = getSkillRouteState("guard", skill);
         const routeVfx = getSkillRouteVfx("guard", skill);
         skill.shield = skill.maxShield;
+        notifyDestinyProtectiveLayer("guard-shield", "guard_regenerate", previousShield, skill.shield);
         state.pulses.push({
           x: state.player.x,
           y: state.player.y,
@@ -2372,28 +3014,42 @@ function updateSkills(dt) {
 }
 
 function spawnDrops(enemy) {
+  const createdDrops = [];
   const eliteReward = enemy.type === "elite";
-  state.drops.push({
+  const xpValue = enemy.isMiniBoss ? 26 : enemies[enemy.type].xp;
+  const orbValue = enemy.isMiniBoss ? 16 : enemies[enemy.type].orb;
+  const xpDrop = {
     x: enemy.x,
     y: enemy.y,
     kind: "xp",
-    value: enemies[enemy.type].xp,
+    value: xpValue,
     color: COLORS.xp,
     radius: 6,
     isEliteReward: eliteReward,
     isMiniBossReward: !!enemy.isMiniBoss,
-  });
+  };
+  state.drops.push(xpDrop);
+  createdDrops.push(xpDrop);
   const orbColor = enemy.color === "black" ? "white" : "black";
-  state.drops.push({
+  const pathDrop = {
     x: enemy.x + (Math.random() * 10 - 5),
     y: enemy.y + (Math.random() * 10 - 5),
     kind: "path",
-    value: enemies[enemy.type].orb,
+    value: orbValue,
     color: orbColor,
     radius: 7,
     isEliteReward: eliteReward,
     isMiniBossReward: !!enemy.isMiniBoss,
-  });
+  };
+  state.drops.push(pathDrop);
+  createdDrops.push(pathDrop);
+  if (enemy.type === "elite" || enemy.isMiniBoss) {
+    destinyRuntime.emit("high_value_drop_spawn", {
+      enemyType: enemy.isMiniBoss ? "miniBoss" : enemy.type,
+      drops: createdDrops,
+    });
+  }
+  return createdDrops;
 }
 
 function triggerMiniBossRewardVacuum() {
@@ -2404,7 +3060,10 @@ function triggerMiniBossRewardVacuum() {
   });
 }
 
-function killEnemy(enemy, source) {
+function killEnemy(enemy, sourceInfo) {
+  const source = typeof sourceInfo === "object" && sourceInfo
+    ? sourceInfo.source
+    : sourceInfo;
   const index = state.enemies.indexOf(enemy);
   if (index >= 0) state.enemies.splice(index, 1);
   if (enemy.isMiniBoss) {
@@ -2412,32 +3071,58 @@ function killEnemy(enemy, source) {
     state.paused = false;
     state.pendingMiniBossReward = true;
   }
-  addXp(enemies[enemy.type].xp);
+  addXp(enemy.isMiniBoss ? 26 : enemies[enemy.type].xp);
   spawnDrops(enemy);
   state.totalKills += 1;
   if (!enemy.isMiniBoss) state.campaign.stageKills += 1;
+  const killRuntimePayload = buildKillRuntimePayload(enemy, source, {
+    isExecuteKill: !!sourceInfo?.isExecuteKill,
+  });
+  destinyRuntime.emit("kill_resolved", killRuntimePayload);
   if (state.player.skills.flame?.burst && enemy.burn > 0) pulse(enemy.x, enemy.y, 44, state.player.skills.flame.damage * 2.2, "burst");
+  if (
+    state.player.skills.flame
+    && hasRouteCapstone("flame", state.player.skills.flame, "meteor")
+    && enemy.burn > 0
+    && distance(state.player, enemy) <= state.player.skills.flame.radius * 0.65 + enemy.radius
+  ) {
+    pulse(enemy.x, enemy.y, 32, state.player.skills.flame.damage * 1.8, "burst", true, {
+      palette: getSkillRouteVfx("flame", state.player.skills.flame).palette || null,
+      routeStyle: "meteor",
+    });
+  }
   maybeTriggerKillHeal();
   triggerBlackBurst(enemy);
-  triggerQingxinDestiny(enemy);
   healFromBlackMeleeKill(enemy);
   const eliteLike = enemy.type === "elite" || enemy.isMiniBoss;
-  if (eliteLike) recordDandingTrigger("elite");
-  if (isSwordSource(source)) queueSwordChainFrom(enemy);
   if (eliteLike && state.player.hp / Math.max(1, state.player.maxHp) > 0.75) {
-    fillPath("white", PATH_COMBAT.gain.whiteEliteHighHpValue);
-    setToast("白道进益：高气血斩精英");
+    fillPath("white", PATH_COMBAT.gain.whiteEliteHighHpValue, {
+      kind: "high_value_kill",
+      enemyType: killRuntimePayload.enemyType,
+      condition: "high_hp",
+    });
+    setToast("白道值 +8：高气血斩精英");
   }
   if (
     state.player.hp / Math.max(1, state.player.maxHp) < PATH_COMBAT.gain.blackLowHpKillThreshold
     && state.blackLowHpKillCooldown <= 0
   ) {
-    fillPath("black", PATH_COMBAT.gain.blackLowHpKillValue);
+    fillPath("black", PATH_COMBAT.gain.blackLowHpKillValue, {
+      kind: "danger_kill",
+      enemyType: killRuntimePayload.enemyType,
+      condition: "low_hp",
+      isExecuteKill: killRuntimePayload.isExecuteKill,
+    });
     state.blackLowHpKillCooldown = PATH_COMBAT.gain.blackLowHpKillCooldown;
   }
   if (eliteLike && distance(state.player, enemy) <= PATH_COMBAT.gain.meleeRange) {
-    fillPath("black", PATH_COMBAT.gain.blackEliteMeleeValue);
-    setToast("黑道进益：近身斩精英");
+    fillPath("black", PATH_COMBAT.gain.blackEliteMeleeValue, {
+      kind: "high_value_kill",
+      enemyType: killRuntimePayload.enemyType,
+      condition: "melee",
+      isExecuteKill: killRuntimePayload.isExecuteKill,
+    });
+    setToast("黑道值 +8：近身斩精英");
   }
   if (enemy.isMiniBoss) {
     triggerMiniBossRewardVacuum();
@@ -2448,6 +3133,8 @@ function hitPlayer(amount, source = null) {
   if (state.player.invulnTimer > 0 || state.mode !== "playing") return;
   const counterEffect = getGuardCounterEffect();
   let incoming = amount * getIncomingMult();
+  const previousHp = state.player.hp;
+  const previousBarrier = state.player.barrier;
   state.noHitTimer = 0;
   state.whiteUntouchedRewardTimer = 0;
   if (counterEffect && source && source.type) {
@@ -2457,19 +3144,24 @@ function hitPlayer(amount, source = null) {
   if (state.player.barrier > 0) {
     state.player.barrier -= incoming;
     if (state.player.barrier >= 0) {
+      notifyDestinyProtectiveLayer("barrier", "incoming_hit_absorb", previousBarrier);
       if (counterEffect) triggerGuardCounterShock(counterEffect, 0.85, source && source.type ? source : null);
       state.player.invulnTimer = baseStats.invuln;
       return;
     }
     incoming = Math.abs(state.player.barrier);
     state.player.barrier = 0;
+    notifyDestinyProtectiveLayer("barrier", "incoming_hit_break", previousBarrier, 0);
   }
   const guard = state.player.skills.guard;
+  if (guard) syncGuardRewriteState(guard);
   if (guard && guard.shield > 0) {
+    const previousShield = guard.shield;
     const guardRouteState = getSkillRouteState("guard", guard);
     const guardRouteVfx = getSkillRouteVfx("guard", guard);
     guard.shield -= incoming;
     if (guard.shield <= 0) {
+      const bulwarkCapstone = hasRouteCapstone("guard", guard, "bulwark");
       if (guard.burst) {
         pulse(state.player.x, state.player.y, 80, 38, "guard", true, {
           routeStyle: guardRouteState?.routeId || guardRouteVfx.auto?.style || "bulwark",
@@ -2494,8 +3186,27 @@ function hitPlayer(amount, source = null) {
         palette: guardRouteVfx.palette || null,
       });
       guard.timer = guard.recharge;
+      notifyDestinyProtectiveLayer("guard-shield", "guard_break", previousShield, 0);
       if (counterEffect) triggerGuardCounterShock(counterEffect, 1.15, source && source.type ? source : null);
-      incoming = Math.abs(guard.shield) * 0.35;
+      if (bulwarkCapstone && guard.bulwarkLastStandCooldown <= 0) {
+        guard.bulwarkLastStandCooldown = 20;
+        state.player.invulnTimer = Math.max(state.player.invulnTimer, 2);
+        state.activeEffects.push({
+          kind: "bulwark-last-stand",
+          x: state.player.x,
+          y: state.player.y,
+          radius: state.player.radius + 34,
+          time: 2,
+          duration: 2,
+          restoreShield: guard.maxShield * 0.3,
+          palette: guardRouteVfx.palette || null,
+          routeStyle: "bulwark",
+        });
+        incoming = 0;
+        setToast("不灭金钟：强撑回潮");
+      } else {
+        incoming = Math.abs(guard.shield) * 0.35;
+      }
     } else {
       state.pulses.push({
         x: state.player.x,
@@ -2510,11 +3221,13 @@ function hitPlayer(amount, source = null) {
         routeStyle: guardRouteState?.routeId || guardRouteVfx.auto?.style || "bulwark",
         palette: guardRouteVfx.palette || null,
       });
+      notifyDestinyProtectiveLayer("guard-shield", "guard_block", previousShield, guard.shield);
       if (counterEffect) triggerGuardCounterShock(counterEffect, 0.92, source && source.type ? source : null);
       incoming *= 0.2;
     }
   }
   state.player.hp -= incoming;
+  notifyDestinyHpChanged("incoming_hit", previousHp);
   state.player.invulnTimer = baseStats.invuln;
   if (state.player.hp <= 0) finishGame(RESULT_DEATH);
 }
@@ -2575,6 +3288,7 @@ destinyFlow = createDestinyFlow({
   getRandomDestinyOffers,
   getEquippedDestinyEntries,
   hasInfusionPoints,
+  onDestinyLoadoutChanged: notifyDestinyLoadoutChanged,
   saveMetaState,
   setToast,
   closeModal,
@@ -2666,6 +3380,9 @@ combatSystems = createCombatSystems({
   markTargetHitFx,
   addXp,
   fillPath,
+  onDropCollected: (drop, context) => destinyRuntime.emit("drop_collected", { drop, ...context }),
+  onHpChanged: notifyDestinyHpChanged,
+  onStatusExpired: (name, source) => destinyRuntime.emit("status_expired", { name, source }),
   maybeOpenPendingLevelUp,
   maybeHandlePostBossInfusion,
   openDestinyOffer,
@@ -2687,13 +3404,26 @@ function renderSkillBar(skillCards) {
   });
 }
 
-function fillPath(color, amount) {
+function fillPath(color, amount, context = {}) {
   const path = color === "white" ? state.whitePath : state.blackPath;
-  const gainMult = color === "white" ? state.whiteGainMult : state.blackGainMult;
   if (path.full) return;
+  const prepared = destinyRuntime.emit("path_gain_prepare", {
+    color,
+    amount,
+    context,
+  });
+  const gainMult = color === "white" ? state.whiteGainMult : state.blackGainMult;
   const previousValue = path.value;
-  path.value = Math.min(path.cap, path.value + amount * gainMult);
+  const finalAmount = (prepared?.amount ?? amount) * gainMult;
+  path.value = Math.min(path.cap, path.value + finalAmount);
   maybeTriggerPathThresholds(path, previousValue);
+  destinyRuntime.emit("path_gain_resolved", {
+    color,
+    requestedAmount: amount,
+    finalAmount,
+    appliedAmount: Math.max(0, path.value - previousValue),
+    context,
+  });
 }
 
 function describePathStage(path) {
@@ -2754,6 +3484,28 @@ installDebugHooks({
   ACTIVE_UNLOCK_RANK,
   destinyCatalog,
   renderGameToText,
+  onDestinyLoadoutChanged: notifyDestinyLoadoutChanged,
+  onSkillRouteChanged: (skillId, routeId) => {
+    if (!skillId) return;
+    if (routeId) {
+      destinyRuntime.emit("skill_route_locked", { skillId, routeId });
+    } else {
+      destinyRuntime.getSkillRewriteState(skillId);
+    }
+    if (skillId === "guard" && state.player.skills.guard) syncGuardRewriteState(state.player.skills.guard);
+  },
+  applyDebugRouteCapstone: (skillId, routeId) => {
+    const capstoneChoice = levelChoices.find((choice) => {
+      const routeMeta = getChoiceRouteMeta(choice);
+      return routeMeta?.kind === "capstone" && routeMeta.skillId === skillId && routeMeta.routeId === routeId;
+    });
+    if (!capstoneChoice || !capstoneChoice.canTake(state)) return false;
+    capstoneChoice.apply(state);
+    return true;
+  },
+  spawnBoss,
+  fillPath,
+  tryUseActiveSlot,
 });
 
 function gameLoop(ts) {

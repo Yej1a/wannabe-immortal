@@ -10,6 +10,7 @@
       getThunderDamage,
       getSkillActiveProfile,
       getSkillRouteLabel,
+      getSkillRouteStage,
       getActiveLevel,
       isActiveUnlocked,
       getEquippedDestinyEntries,
@@ -48,6 +49,21 @@
       return `${Math.max(0, value).toFixed(value >= 10 ? 0 : 1)}s`;
     }
 
+    function getRouteStageLabel(routeStage) {
+      if (!routeStage) return "未分路";
+      if (routeStage.stage === "graduated") return "已毕业";
+      if (routeStage.stage === "formed") return "成型";
+      if (routeStage.stage === "branched") return "分路锁定";
+      return "原型";
+    }
+
+    function getRouteSummaryText(routeStage, activeProfile) {
+      const route = routeStage?.route || activeProfile;
+      if (!route) return "";
+      if (routeStage?.graduated && route.graduationSummary) return route.graduationSummary;
+      return route.activeClimaxText || route.activeDescription || "";
+    }
+
     function describeIncomingMult(mult) {
       if (mult < 1) return `承伤 ${formatSignedPercent(1 - mult)} `;
       if (mult > 1) return `承伤 +${((mult - 1) * 100).toFixed(0)}%`;
@@ -75,14 +91,26 @@
           <div class="inspect-body">点击后会锁定当前条目，再点一次即可取消锁定。</div>
         `;
       }
-      const lines = (entry.lines || [])
-        .map((line) => `<div class="inspect-line">${escapeHtml(line)}</div>`)
-        .join("");
+      const gains = entry.gains || entry.lines || [];
+      const losses = entry.losses || [];
+      const fixed = entry.fixed || [];
+      const renderSection = (title, items) => `
+        <div class="inspect-section">
+          <div class="inspect-section-title">${title}</div>
+          ${items.length
+            ? items.map((line) => `<div class="inspect-line">${escapeHtml(line)}</div>`).join("")
+            : '<div class="inspect-line inspect-line-empty">无</div>'}
+        </div>
+      `;
       return `
         <div class="inspect-title">${escapeHtml(entry.title)}</div>
         <div class="inspect-meta">${escapeHtml(entry.meta || (pinned ? "已锁定" : "悬停查看"))}</div>
         <div class="inspect-body">${escapeHtml(entry.body || "")}</div>
-        ${lines ? `<div class="inspect-lines">${lines}</div>` : ""}
+        <div class="inspect-sections">
+          ${renderSection("得到", gains)}
+          ${renderSection("失去", losses)}
+          ${renderSection("固定说明", fixed)}
+        </div>
       `;
     }
 
@@ -157,16 +185,16 @@
 
     function getStatusDescription(status) {
       const effects = status.effects || {};
-      if (status.name === "清明") return "白道一段状态。强化拾取、吸附与击杀回复，让战场资源更容易滚起来。";
-      if (status.name === "灵护") return "白道二段状态。提供护体与更强掉落吸附，结束时若血线健康还会返还部分白槽。";
-      if (status.name === "天息") return "白槽满后手动释放的守成状态。提高生存与资源吸附，适合稳住场面。";
-      if (status.name === "煞燃") return "黑道一段状态。提高伤害、施法频率与移速，但会持续损失生命。";
-      if (status.name === "魔驰") return "黑道二段状态。主动术法转得更快，低血敌人更容易被斩杀。";
-      if (status.name === "魔沸") return "黑槽满后手动释放的爆发状态。大幅强化输出、暴击与黑焰爆裂。";
-      if (status.name === "归元") return "太极归元法激活后的互转增益。白道回复会短暂转成伤害提升。";
-      if (effects.onKillHealPct) return "击杀触发型增益状态。";
-      if (effects.damageMult) return "伤害强化状态。";
-      return "战斗中的临时增益状态。";
+      if (status.name === "清明") return "白道 1/3 状态，提供拾取、吸附与击杀回复。";
+      if (status.name === "灵护") return "白道 2/3 状态，提供护体、精英奖励吸附与状态结束返还判定。";
+      if (status.name === "天息") return "白槽满后手动释放的白道状态，会触发安定脉冲并提供持续护持。";
+      if (status.name === "煞燃") return "黑道 1/3 状态，提供压血换节奏的伤害、施法与移速强化。";
+      if (status.name === "魔驰") return "黑道 2/3 状态，提供主动冷却流速与低血斩杀窗口。";
+      if (status.name === "魔沸") return "黑槽满后手动释放的黑道状态，会触发杀伐冲击并进入收割态。";
+      if (status.name === "归元") return "混道互转状态，当前白道回复会短暂转成伤害提升。";
+      if (effects.onKillHealPct) return "击杀触发型战斗增益状态。";
+      if (effects.damageMult) return "当前提供伤害强化的战斗状态。";
+      return "当前生效中的战斗状态。";
     }
 
     function getStatusEffectLines(status) {
@@ -184,50 +212,110 @@
       if (effects.blackBurstRadius) lines.push(`击杀时触发黑焰爆裂，半径 ${Math.round(effects.blackBurstRadius)}`);
       if (effects.blackBurstRadiusMult) lines.push(`黑焰爆裂范围额外提升 ${formatSignedPercent(effects.blackBurstRadiusMult - 1)}`);
       if (effects.critChanceBonus) lines.push(`暴击率 ${formatSignedPercent(effects.critChanceBonus)}`);
-      if (effects.drain) lines.push(`每秒损失 ${effects.drain.toFixed(1)} 生命`);
+      if (effects.drain) lines.push(`每秒损失 ${formatPercent(effects.drain, 1)} 最大生命`);
       if (effects.execute) {
         lines.push(
           `斩杀线：普通 ${formatPercent(effects.execute.normalThreshold)} / 精英 ${formatPercent(effects.execute.eliteThreshold)} / Boss ${formatPercent(effects.execute.bossThreshold)}`,
         );
       }
-      if (effects.requireBarrier) lines.push("需要护体存在时，灵护的掉落吸附效果才会完全生效");
       return lines;
     }
 
+    function getStatusTone(name) {
+      if (name === "清明" || name === "灵护" || name === "天息" || name === "护体") return "white";
+      if (name === "煞燃" || name === "魔驰" || name === "魔沸" || name === "袭势") return "black";
+      return "neutral";
+    }
+
+    function getStatusRoleLabel(status) {
+      if (status.name === "清明") return "吸附/回复";
+      if (status.name === "灵护") return "护体/返还";
+      if (status.name === "天息") return "稳场/吸附";
+      if (status.name === "煞燃") return "压血/爆裂";
+      if (status.name === "魔驰") return "追杀/主动";
+      if (status.name === "魔沸") return "开杀/爆发";
+      if (status.name === "护体") return "护体";
+      if (status.name === "袭势") return "追杀叠层";
+      return "战斗状态";
+    }
+
+    function getStatusMeta(status) {
+      if (status.name === "清明") return `白道 1/3 | 剩余 ${formatSeconds(status.remaining)}`;
+      if (status.name === "灵护") return `白道 2/3 | 剩余 ${formatSeconds(status.remaining)}`;
+      if (status.name === "天息") return `白道满槽 | 剩余 ${formatSeconds(status.remaining)}`;
+      if (status.name === "煞燃") return `黑道 1/3 | 剩余 ${formatSeconds(status.remaining)}`;
+      if (status.name === "魔驰") return `黑道 2/3 | 剩余 ${formatSeconds(status.remaining)}`;
+      if (status.name === "魔沸") return `黑道满槽 | 剩余 ${formatSeconds(status.remaining)}`;
+      return `剩余 ${formatSeconds(status.remaining)}`;
+    }
+
+    function getStatusRuleSections(status) {
+      const effects = status.effects || {};
+      const gains = getStatusEffectLines(status).filter((line) => (
+        !line.startsWith("每秒损失")
+        && !line.startsWith("承伤 +")
+      ));
+      const losses = [];
+      if (effects.drain) losses.push(`每秒损失 ${formatPercent(effects.drain, 1)} 最大生命`);
+      if (effects.incomingMult > 1) losses.push(describeIncomingMult(effects.incomingMult).trim());
+      if (effects.requireBarrier) losses.push("护体消失后，精英奖励吸附只保留基础状态收益");
+      const fixed = [];
+      if (status.name === "清明" || status.name === "煞燃") fixed.push("同一充能周期内只触发一次");
+      if (status.name === "灵护" || status.name === "魔驰") fixed.push("同一充能周期内只触发一次");
+      if (status.name === "天息" || status.name === "魔沸") fixed.push("同名状态不可叠加，释放后对应槽位清空");
+      if (status.name === "灵护") fixed.push("结束时若生命仍高于 70%，返还 8 点白道值");
+      if (status.name === "魔驰") fixed.push("近身命中或主动进攻可叠加袭势，最多 5 层");
+      if (status.name === "护体") fixed.push("护体会优先承受伤害，不会新增第二护体条");
+      if (status.name === "袭势") fixed.push("袭势由魔驰窗口中的近身命中或主动进攻触发");
+      return { gains, losses, fixed };
+    }
+
     function buildStatusInspectItems() {
-      const items = state.statuses.map((status) => ({
-        key: `status-${status.name}`,
-        label: `${status.name} ${formatSeconds(status.remaining)}`,
-        title: `状态：${status.name}`,
-        meta: `剩余 ${formatSeconds(status.remaining)}`,
-        body: getStatusDescription(status),
-        lines: getStatusEffectLines(status),
-      }));
+      const items = state.statuses.map((status) => {
+        const sections = getStatusRuleSections(status);
+        return {
+          key: `status-${status.name}`,
+          tone: getStatusTone(status.name),
+          label: `${status.name} ${getStatusRoleLabel(status)} ${formatSeconds(status.remaining)}`,
+          title: `状态：${status.name}`,
+          meta: getStatusMeta(status),
+          body: getStatusDescription(status),
+          gains: sections.gains,
+          losses: sections.losses,
+          fixed: sections.fixed,
+        };
+      });
       if (state.player.barrier > 0) {
         items.push({
           key: "barrier",
+          tone: "white",
           label: `护体 ${Math.ceil(state.player.barrier)}`,
           title: "护体",
           meta: `当前护体 ${Math.ceil(state.player.barrier)}`,
-          body: "护体会优先承受伤害，是白道灵护、天息和金钟罩维持生存的重要资源。",
-          lines: [
+          body: "护体会优先承受伤害，是当前白道稳场与护体体系的直接结果。",
+          gains: [
             `当前护体值 ${Math.ceil(state.player.barrier)}`,
             `生命 ${Math.ceil(state.player.hp)} / ${Math.ceil(state.player.maxHp)}`,
           ],
+          losses: [],
+          fixed: ["护体不会改写 Q / E 的基底逻辑，也不会新增第二护体条"],
         });
       }
       if (state.blackMomentumStacks > 0 && state.blackMomentumTimer > 0) {
         items.push({
           key: "black-momentum",
+          tone: "black",
           label: `袭势 ${state.blackMomentumStacks}层`,
           title: "袭势",
           meta: `剩余 ${formatSeconds(state.blackMomentumTimer)}`,
-          body: "黑道连杀节奏状态。层数越高，当前爆发期的伤害越高。",
-          lines: [
+          body: "袭势是魔驰窗口中的临时追杀叠层，会继续放大当前近身压制收益。",
+          gains: [
             `当前层数 ${state.blackMomentumStacks}`,
             `剩余时间 ${formatSeconds(state.blackMomentumTimer)}`,
             `每层额外伤害 ${formatSignedPercent(PATH_COMBAT.black.tier2AssaultStackMult)}`,
           ],
+          losses: [],
+          fixed: ["袭势持续 2 秒，最多叠加 5 层"],
         });
       }
       return items;
@@ -236,7 +324,13 @@
     function getSkillInspectLines(skillId, skill, slotIndex) {
       const lines = [`当前 Rank ${skill.rank}`];
       const activeProfile = getSkillActiveProfile(skillId, skill);
+      const routeStage = getSkillRouteStage(skillId, skill);
+      const route = routeStage?.route || activeProfile;
       lines.push(`当前路线 ${getSkillRouteLabel(skillId, skill)}`);
+      if (routeStage) lines.push(`路线阶段 ${getRouteStageLabel(routeStage)}`);
+      if (route?.capstoneName) lines.push(`毕业词条 ${route.capstoneName}`);
+      if (route?.identityTags?.length) lines.push(`路线标签 ${route.identityTags.join(" / ")}`);
+      if (route?.activeClimaxText) lines.push(`主动高潮 ${route.activeClimaxText}`);
       lines.push(`当前主动 ${activeProfile.activeName}`);
       const activeLevel = getActiveLevel(skill);
       if (isActiveUnlocked(skill)) {
@@ -276,7 +370,10 @@
         const template = skills[id];
         const slotIndex = index + 1;
         const activeProfile = getSkillActiveProfile(id, skill);
+        const routeStage = getSkillRouteStage(id, skill);
+        const route = routeStage?.route || activeProfile;
         const routeLabel = getSkillRouteLabel(id, skill);
+        const routeStageLabel = getRouteStageLabel(routeStage);
         const activeLevel = getActiveLevel(skill);
         const activeText = activeLevel > 0
           ? (skill.activeTimer > 0 ? `主动 ${slotIndex} 键 ${formatSeconds(skill.activeTimer)}` : `主动 ${slotIndex} 键 已就绪`)
@@ -289,11 +386,28 @@
         return {
           key: id,
           name: `${slotIndex}. ${template.name}`,
-          detail: `${detail}<br>${routeLabel}<br>${activeProfile.activeName}<br>${activeText}`,
+          detail: `${detail}<br>${activeProfile.activeName}<br>${activeText}`,
+          badges: [
+            routeLabel,
+            routeStageLabel,
+            ...(routeStage?.graduated && route?.capstoneName ? [route.capstoneName] : []),
+          ],
+          stageClass: routeStage?.stage || "prototype",
+          climaxText: route?.activeClimaxText || "",
           title: `${slotIndex}. ${template.name}`,
-          meta: activeLevel > 0 ? `${routeLabel} | 主动已解锁` : `${routeLabel} | 主动未解锁`,
-          body: activeProfile.activeDescription || template.description,
-          lines: getSkillInspectLines(id, skill, slotIndex),
+          meta: activeLevel > 0
+            ? `${routeLabel} | ${routeStageLabel} | 主动已解锁`
+            : `${routeLabel} | ${routeStageLabel} | 主动未解锁`,
+          body: getRouteSummaryText(routeStage, activeProfile) || template.description,
+          gains: getSkillInspectLines(id, skill, slotIndex),
+          losses: activeLevel > 0 ? [] : [`主动术法需 Rank ${ACTIVE_UNLOCK_RANK} 才会解锁`],
+          fixed: skill.route
+            ? [
+              "选择流派后不可更改",
+              "另一条路线会移出本局词池",
+              ...(route?.graduationSummary ? [route.graduationSummary] : []),
+            ]
+            : ["未分路前仍按当前原型出手，分路后会立刻切换对应主动技"],
         };
       });
       setInspectEntries("skill", items);
@@ -312,7 +426,9 @@
           meta: `${getAlignmentLabel(alignment)} | ${entry.def.tier} | ${entry.def.category}`,
           panelTitle: entry.def.name,
           panelBody: getDestinyText(entry.def, alignment),
-          panelLines: [
+          panelGains: [getDestinyText(entry.def, alignment)],
+          panelLosses: [],
+          panelFixed: [
             `当前道性 ${getAlignmentLabel(alignment)}`,
             `类型 ${entry.def.category}`,
             `品阶 ${entry.def.tier}`,
@@ -336,7 +452,9 @@
             title: item.panelTitle,
             meta: item.meta,
             body: item.panelBody,
-            lines: item.panelLines,
+            gains: item.panelGains,
+            losses: item.panelLosses,
+            fixed: item.panelFixed,
           })),
       );
       return items;
@@ -344,11 +462,11 @@
 
     function buildPathHintHtml() {
       const whiteRelease = state.whitePath.full
-        ? "当前已满槽，可按 Q 立刻释放天息。"
-        : "满槽后可按 Q 释放天息，获得护体、掉落吸附与击杀回复。";
+        ? "当前白槽已满，Q 可释放天息。"
+        : `白槽 ${PATH_COMBAT.thresholds.tier1} 触发清明，${PATH_COMBAT.thresholds.tier2} 触发灵护，${PATH_COMBAT.thresholds.full} 满槽后 Q 可释放天息。`;
       const blackRelease = state.blackPath.full
-        ? "当前已满槽，可按 E 立刻释放魔沸。"
-        : "满槽后可按 E 释放魔沸，获得爆发伤害、暴击率与黑焰范围强化。";
+        ? "当前黑槽已满，E 可释放魔沸。"
+        : `黑槽 ${PATH_COMBAT.thresholds.tier1} 触发煞燃，${PATH_COMBAT.thresholds.tier2} 触发魔驰，${PATH_COMBAT.thresholds.full} 满槽后 E 可释放魔沸。`;
       return `
         <div class="path-hint-block">
           <strong class="path-hint-title">白槽满说明</strong>

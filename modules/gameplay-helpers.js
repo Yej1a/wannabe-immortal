@@ -50,13 +50,11 @@
     }
 
     function isBloodBattleWindowActive() {
-      return hasEquippedDestiny("xuezhan") && state.player.hp / Math.max(1, state.player.maxHp) <= 0.45;
+      return false;
     }
 
     function isGuiyuanActive() {
-      if (!hasEquippedDestiny("taiji")) return false;
-      const counts = getAlignmentCounts();
-      return counts.white > 0 && counts.black > 0;
+      return false;
     }
 
     function getActiveLevel(skill) {
@@ -74,6 +72,36 @@
         defaultRouteId: routeTable.defaultRoute,
         defaultRoute: routeTable.routes[routeTable.defaultRoute],
       };
+    }
+
+    function getSkillRouteStage(skillId, skill) {
+      const routeState = getSkillRouteState(skillId, skill);
+      if (!routeState) return null;
+      const branchCount = getSkillBranchCount(skill, routeState.routeId);
+      const graduated = !!skill?.capstone && skill.capstone === routeState.routeId;
+      const stage = !routeState.locked
+        ? "prototype"
+        : graduated
+          ? "graduated"
+          : branchCount >= 2
+            ? "formed"
+            : "branched";
+      return {
+        ...routeState,
+        branchCount,
+        graduated,
+        stage,
+        capstoneName: routeState.route?.capstoneName || routeState.route?.activeName || "",
+      };
+    }
+
+    function getSkillRouteDisplayLabel(skillId, skill) {
+      const routeStage = getSkillRouteStage(skillId, skill);
+      if (!routeStage) return "未分路";
+      if (!routeStage.locked) return `未分路（当前按 ${routeStage.route.label} 原型）`;
+      if (routeStage.graduated) return `${routeStage.route.label}·已毕业`;
+      if (routeStage.branchCount >= 2) return `${routeStage.route.label}·成型`;
+      return `${routeStage.route.label}·分路锁定`;
     }
 
     function getSkillRouteLabel(skillId, skill) {
@@ -122,10 +150,24 @@
       return !skill.route || skill.route === routeId;
     }
 
+    function canTakeCapstoneUpgrade(stateRef, skillId, routeId) {
+      const skill = stateRef.player.skills[skillId];
+      if (!skill || skill.route !== routeId) return false;
+      if (getSkillBranchCount(skill, routeId) < 2) return false;
+      return skill.capstone !== routeId;
+    }
+
     function markRouteSwitch(stateRef, skillId, routeId) {
       const route = skillRouteTable[skillId]?.routes?.[routeId];
       if (!route) return;
       stateRef.routeShiftNotice = `${skills[skillId].name}转入${route.label}：主动技切换为 ${route.activeName}`;
+    }
+
+    function markRouteGraduation(stateRef, skillId, routeId) {
+      const route = skillRouteTable[skillId]?.routes?.[routeId];
+      if (!route) return;
+      const capstoneName = route.capstoneName || route.activeName;
+      stateRef.routeShiftNotice = `${skills[skillId].name}已成：${route.label}·${capstoneName}`;
     }
 
     function applySkillBaseUpgrade(stateRef, skillId, mutator) {
@@ -152,6 +194,17 @@
       }
       if (!skill.routePoints) skill.routePoints = {};
       skill.routePoints[routeId] = (skill.routePoints[routeId] || 0) + 1;
+      stateRef.player.skillFocus[skillId] = (stateRef.player.skillFocus[skillId] || 0) + 1;
+    }
+
+    function applySkillCapstoneUpgrade(stateRef, skillId, routeId, mutator) {
+      const skill = stateRef.player.skills[skillId];
+      if (!skill) return;
+      mutator(skill);
+      skill.rank += 1;
+      skill.route = routeId;
+      skill.capstone = routeId;
+      markRouteGraduation(stateRef, skillId, routeId);
       stateRef.player.skillFocus[skillId] = (stateRef.player.skillFocus[skillId] || 0) + 1;
     }
 
@@ -290,6 +343,10 @@
           speedMult = Math.max(speedMult, effects.eliteAttractSpeedMult);
         }
       });
+      if (drop.heguangBoosted) {
+        radius = Math.max(radius, 360);
+        speed = Math.max(speed, 780);
+      }
       return { radius, speed: speed * speedMult };
     }
 
@@ -309,9 +366,6 @@
         }
         if (hpRatio <= effects.execute.normalThreshold) mult = Math.max(mult, effects.execute.normalMult);
       });
-      if (mult > 1 && isBloodBattleWindowActive() && hasStatus("魔驰")) {
-        mult *= 1.32;
-      }
       return mult;
     }
 
@@ -329,9 +383,6 @@
         }
         if (effects.blackBurstRadiusMult) radiusMult = Math.max(radiusMult, effects.blackBurstRadiusMult);
       });
-      if (isBloodBattleWindowActive() && hasStatus("煞燃")) {
-        radiusMult *= 1.35;
-      }
       return { radius: radius * radiusMult, base, enemyMaxHpPct };
     }
 
@@ -345,6 +396,9 @@
 
     function healPlayer(amount, source = "generic") {
       if (amount <= 0) return;
+      if (hasEquippedDestiny("tiansha")) {
+        amount *= 0.72;
+      }
       state.player.hp = Math.min(state.player.maxHp, state.player.hp + amount);
       if (source === "white-destiny" && isGuiyuanActive()) {
         addStatus("归元", 3.2, {
@@ -426,6 +480,8 @@
       isGuiyuanActive,
       getActiveLevel,
       getSkillRouteState,
+      getSkillRouteStage,
+      getSkillRouteDisplayLabel,
       getSkillRouteLabel,
       getSkillActiveProfile,
       getSkillRouteVfx,
@@ -433,9 +489,12 @@
       isActiveUnlocked,
       getSkillBranchCount,
       canTakeBranchUpgrade,
+      canTakeCapstoneUpgrade,
       markRouteSwitch,
+      markRouteGraduation,
       applySkillBaseUpgrade,
       applySkillBranchUpgrade,
+      applySkillCapstoneUpgrade,
       nearestEnemyFromPoint,
       getTargetsWithinRadius,
       getCombatTargets,

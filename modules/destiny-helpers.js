@@ -4,6 +4,7 @@
     baseStats,
     DESTINY_SLOT_CAP,
     DESTINY_POOL_VERSION,
+    DESTINY_RUNTIME_RULES,
     RESULT_DEATH,
     RESULT_CLEAR,
     HUMAN_ENDING_DESTINY_ID,
@@ -11,6 +12,9 @@
   } = global.GameData;
 
   const ALL_DESTINY_IDS = Object.keys(destinyCatalog);
+  const SKILL_REWRITE_DESTINY_TO_SKILL = Object.fromEntries(
+    Object.values(DESTINY_RUNTIME_RULES.skillRewriteBindings || {}).map((binding) => [binding.destinyId, binding.skillId]),
+  );
 
   function createFreshDestinyState() {
     return {
@@ -170,7 +174,13 @@
   }
 
   function getRandomDestinyOffers(metaState, state, count = 3) {
-    const pool = getMissingDestinyIds(metaState);
+    const pool = getMissingDestinyIds(metaState).filter((id) => {
+      const def = destinyCatalog[id];
+      if (!def) return false;
+      if (def.category !== "skill-rewrite") return true;
+      const skillId = SKILL_REWRITE_DESTINY_TO_SKILL[id];
+      return !!skillId && !!state?.player?.skills?.[skillId];
+    });
     const offers = [];
     while (pool.length > 0 && offers.length < count) {
       const id = weightedPick(

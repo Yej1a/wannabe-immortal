@@ -13,6 +13,7 @@
       getRandomDestinyOffers,
       getEquippedDestinyEntries,
       hasInfusionPoints,
+      onDestinyLoadoutChanged = () => {},
       saveMetaState,
       setToast,
       closeModal,
@@ -57,6 +58,7 @@
               alignment: destinyCatalog[newId].alignment,
             };
             metaState.destiny.equipped.push(newId);
+            onDestinyLoadoutChanged("acquire");
             saveMetaState();
             setToast(`获得命格 ${destinyCatalog[newId].name}`);
             closeModal();
@@ -133,6 +135,7 @@
         onClick: () => {
           if (!onConfirm(entry.id)) return;
           replaceEquippedDestiny(entry.id, newId);
+          onDestinyLoadoutChanged("replace");
           saveMetaState();
           setToast(`获得命格 ${destinyCatalog[newId].name}`);
           closeModal();
@@ -197,6 +200,7 @@
       } else {
         state.blackInfusionPoints -= 1;
       }
+      onDestinyLoadoutChanged(color === "white" ? "pointify_white" : "pointify_black");
       saveMetaState();
       openDaoPointifyResultModal({
         color,

@@ -76,12 +76,53 @@
     return `${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
   }
 
-  function setToast(dom, uiState, message) {
+  function getSkillBranchCount(skill, routeId) {
+    if (!skill || !skill.routePoints || !routeId) return 0;
+    return Number(skill.routePoints[routeId] || 0);
+  }
+
+  function getSkillRouteSnapshot(skillId, skill) {
+    const routeTable = skillRouteTable[skillId];
+    if (!routeTable) return null;
+    const routeId = skill?.route || routeTable.defaultRoute || null;
+    const route = routeId ? routeTable.routes?.[routeId] || null : null;
+    if (!route) return null;
+    const branchCount = getSkillBranchCount(skill, routeId);
+    const graduated = !!skill?.capstone && skill.capstone === routeId;
+    const stage = !skill?.route
+      ? "prototype"
+      : graduated
+        ? "graduated"
+        : branchCount >= 2
+          ? "formed"
+          : "branched";
+    return {
+      routeId,
+      route,
+      branchCount,
+      graduated,
+      stage,
+      label: !skill?.route ? `未分路（当前按 ${route.label} 原型）` : route.label,
+    };
+  }
+
+  function getSkillRouteStageLabel(routeStage) {
+    if (!routeStage) return "未分路";
+    if (routeStage.stage === "graduated") return "已毕业";
+    if (routeStage.stage === "formed") return "成型";
+    if (routeStage.stage === "branched") return "分路锁定";
+    return "原型";
+  }
+
+  function setToast(dom, uiState, message, tone = "") {
     dom.toast.textContent = message;
+    dom.toast.className = "toast";
+    if (tone) dom.toast.classList.add(`toast-${tone}`);
     dom.toast.classList.add("show");
     clearTimeout(uiState.toastTimeout);
     uiState.toastTimeout = setTimeout(() => {
       dom.toast.classList.remove("show");
+      dom.toast.className = "toast";
     }, 1800);
   }
 
@@ -147,10 +188,64 @@
   }
 
   function describePathStage(path) {
-    if (path.full) return `已满槽，按 ${path.color === "white" ? "Q" : "E"} 释放`;
-    if (path.value >= PATH_THRESHOLDS.tier2) return "2/3 已触发";
-    if (path.value >= PATH_THRESHOLDS.tier1) return "1/3 已触发";
+    const tier1Name = path.color === "white" ? "清明" : "煞燃";
+    const tier2Name = path.color === "white" ? "灵护" : "魔驰";
+    const fullName = path.color === "white" ? "天息" : "魔沸";
+    const key = path.color === "white" ? "Q" : "E";
+    if (path.full) return `${fullName}就绪，${key}可释放`;
+    if (path.value >= PATH_THRESHOLDS.tier2) return `${tier2Name}已触发`;
+    if (path.value >= PATH_THRESHOLDS.tier1) return `${tier1Name}已触发`;
     return `下一节点 ${path.value < PATH_THRESHOLDS.tier1 ? PATH_THRESHOLDS.tier1 : PATH_THRESHOLDS.tier2}`;
+  }
+
+  function hasStatus(state, name) {
+    return state.statuses.some((status) => status.name === name);
+  }
+
+  function buildPathStageHtml(path, state) {
+    const isWhite = path.color === "white";
+    const key = isWhite ? "Q" : "E";
+    const tier1Name = isWhite ? "清明" : "煞燃";
+    const tier2Name = isWhite ? "灵护" : "魔驰";
+    const fullName = isWhite ? "天息" : "魔沸";
+    let label = `下一节点 ${path.value < PATH_THRESHOLDS.tier1 ? PATH_THRESHOLDS.tier1 : PATH_THRESHOLDS.tier2}`;
+    let tone = "path-stage-neutral";
+    if (path.full) {
+      label = `${fullName}就绪`;
+      tone = "path-stage-ready";
+    } else if (path.value >= PATH_THRESHOLDS.tier2) {
+      label = `${tier2Name}已触发`;
+      tone = "path-stage-tier2";
+    } else if (path.value >= PATH_THRESHOLDS.tier1) {
+      label = `${tier1Name}已触发`;
+      tone = "path-stage-tier1";
+    }
+    const releaseActive = hasStatus(state, isWhite ? "天息" : "魔沸");
+    return `
+      <span class="path-stage-wrap ${tone}${releaseActive ? " is-release-active" : ""}">
+        <span class="path-stage-label">${label}</span>
+        <span class="path-key${path.full ? " ready" : ""}">${key}</span>
+      </span>
+    `;
+  }
+
+  function syncPathHudBlock(fill, path, state) {
+    const meter = fill?.parentElement;
+    const block = fill?.closest?.(".panel-block");
+    if (!meter || !block) return;
+    const isWhite = path.color === "white";
+    const tier1Active = hasStatus(state, isWhite ? "清明" : "煞燃");
+    const tier2Active = hasStatus(state, isWhite ? "灵护" : "魔驰");
+    const releaseActive = hasStatus(state, isWhite ? "天息" : "魔沸");
+    meter.classList.add("path-meter");
+    block.classList.add("path-block");
+    block.classList.toggle("path-block-white", isWhite);
+    block.classList.toggle("path-block-black", !isWhite);
+    block.classList.toggle("is-tier-1", path.value >= PATH_THRESHOLDS.tier1);
+    block.classList.toggle("is-tier-2", path.value >= PATH_THRESHOLDS.tier2);
+    block.classList.toggle("is-ready", path.full);
+    block.classList.toggle("is-tier-active", tier1Active || tier2Active);
+    block.classList.toggle("is-release-active", releaseActive);
   }
 
   function refreshPhase(state) {
@@ -169,7 +264,7 @@
   function renderSkillBar({ dom, skillCards }) {
     const slots = skillCards.map((card) => `
       <button
-        class="skill-card inspectable"
+        class="skill-card inspectable ${card.stageClass ? `skill-card-${card.stageClass}` : ""}"
         type="button"
         data-inspect-group="skill"
         data-inspect-key="${card.key}"
@@ -177,7 +272,13 @@
         ${renderSkillIcon(card.key)}
         <div class="skill-copy">
           <div class="skill-name">${card.name}</div>
+          ${card.badges?.length ? `
+            <div class="skill-badges">
+              ${card.badges.map((badge) => `<span class="skill-badge">${badge}</span>`).join("")}
+            </div>
+          ` : ""}
           <div class="skill-detail">${card.detail}</div>
+          ${card.climaxText ? `<div class="skill-climax">${card.climaxText}</div>` : ""}
         </div>
       </button>
     `);
@@ -217,14 +318,16 @@
     dom.blackFill.style.width = `${(state.blackPath.value / state.blackPath.cap) * 100}%`;
     dom.whiteText.textContent = `${Math.floor(state.whitePath.value)} / ${state.whitePath.cap}`;
     dom.blackText.textContent = `${Math.floor(state.blackPath.value)} / ${state.blackPath.cap}`;
-    dom.whiteStageText.textContent = describePathStage(state.whitePath);
-    dom.blackStageText.textContent = describePathStage(state.blackPath);
+    dom.whiteStageText.innerHTML = buildPathStageHtml(state.whitePath, state);
+    dom.blackStageText.innerHTML = buildPathStageHtml(state.blackPath, state);
+    syncPathHudBlock(dom.whiteFill, state.whitePath, state);
+    syncPathHudBlock(dom.blackFill, state.blackPath, state);
     if (dom.nodeHint) dom.nodeHint.innerHTML = pathHintHtml;
     dom.statusList.innerHTML = statusItems
       .slice(0, 6)
       .map((item) => `
         <button
-          class="status-pill inspectable"
+          class="status-pill inspectable ${item.tone ? `status-pill-${item.tone}` : ""}"
           type="button"
           data-inspect-group="status"
           data-inspect-key="${item.key}"
@@ -272,15 +375,23 @@
         level: state.player.level,
         skills: state.player.skillOrder.map((id) => {
           const skill = state.player.skills[id];
-          const routeTable = skillRouteTable[id];
-          const routeId = skill.route || routeTable?.defaultRoute || null;
-          const activeRoute = routeId && routeTable?.routes?.[routeId] ? routeTable.routes[routeId] : null;
+          const routeState = getSkillRouteSnapshot(id, skill);
+          const activeRoute = routeState?.route || null;
           return {
             id,
             rank: skill.rank,
-            route: routeId,
-            route_label: activeRoute?.label || "未分路",
+            route: routeState?.routeId || null,
+            route_label: routeState?.label || "未分路",
+            route_stage: getSkillRouteStageLabel(routeState),
+            route_stage_key: routeState?.stage || "prototype",
+            branch_count: routeState?.branchCount || 0,
+            graduated: !!routeState?.graduated,
+            capstone_name: activeRoute?.capstoneName || null,
+            identity_tags: activeRoute?.identityTags || [],
+            active_climax_text: activeRoute?.activeClimaxText || "",
+            graduation_summary: activeRoute?.graduationSummary || "",
             active_name: activeRoute?.activeName || skills[id]?.name || id,
+            active_ready: skill.activeTimer <= 0,
           };
         }),
       },
@@ -296,6 +407,24 @@
         owned: getOwnedDestinyEntries().map((entry) => ({ id: entry.id, alignment: getEntryAlignment(entry) })),
         equipped: metaState.destiny.equipped,
       },
+      destiny_runtime: {
+        white_point_total: Math.round(state.destinyRuntime?.whitePointTotal || 0),
+        black_point_total: Math.round(state.destinyRuntime?.blackPointTotal || 0),
+        skill_rewrites: Object.values(state.destinyRuntime?.skillRewriteState || {}).map((entry) => ({
+          skill_id: entry.skillId,
+          learned: !!entry.learned,
+          route_locked: !!entry.routeLocked,
+          route_id: entry.routeId,
+          entries: (entry.entries || [])
+            .filter((item) => item.equipped)
+            .map((item) => ({ destiny_id: item.destinyId, layer: item.layer, route_id: item.routeId })),
+        })),
+        recent_log: (state.destinyRuntime?.log || []).slice(-8).map((item) => ({
+          type: item.type,
+          time: item.time,
+          payload: item.payload,
+        })),
+      },
       enemy_count: state.enemies.length,
       statuses: state.statuses.map((status) => ({ name: status.name, remaining: Number(status.remaining.toFixed(1)) })),
       visible_enemies: state.enemies.slice(0, 8).map((enemy) => ({
@@ -305,12 +434,30 @@
         hp: Math.round(enemy.hp),
         color: enemy.color,
       })),
-      boss: state.boss ? { hp: Math.round(state.boss.hp), phase: state.boss.phase } : null,
+      boss: state.boss ? {
+        id: state.boss.bossId || null,
+        name: state.boss.name || "Boss",
+        role: state.boss.role || null,
+        hp: Math.round(state.boss.hp),
+        phase: state.boss.phase,
+        phase_name: state.boss.phaseNames?.[state.boss.phase - 1] || `阶段${state.boss.phase}`,
+        current_skill: state.boss.intentLabel || null,
+        current_skill_category: state.boss.intentCategory || null,
+        counterable_window: !!state.boss.intentCounterable,
+        exposed_timer: Number((state.boss.exposedTimer || 0).toFixed(2)),
+      } : null,
       active_effects: state.activeEffects.slice(0, 6).map((effect) => ({
         kind: effect.kind,
         x: Math.round(effect.x ?? effect.startX ?? 0),
         y: Math.round(effect.y ?? effect.startY ?? 0),
         time: Number((effect.time || 0).toFixed(2)),
+      })),
+      pulses: state.pulses.slice(0, 6).map((pulse) => ({
+        kind: pulse.kind,
+        x: Math.round(pulse.x ?? 0),
+        y: Math.round(pulse.y ?? 0),
+        radius: Math.round(pulse.radius ?? 0),
+        time: Number((pulse.time || pulse.duration || 0).toFixed(2)),
       })),
       pending_levelups: state.pendingLevelUps,
       current_modal: state.currentModal,

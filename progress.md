@@ -198,6 +198,42 @@ Original prompt: ?????????????????????????3 ???????????????????????10 ??????????
   - small-boss -> destiny reward -> next stage needs a fuller traversal test
   - run-end shop and final result flow need end-to-end validation in browser
 
+2026-03-23 destiny first-batch validation + full first-wave runtime
+
+- Reviewed `private_docs/GAME_DESIGN_DOC.md` sections for:
+  - first-wave destiny rule rewriters
+  - runtime hook table
+  - implementation order
+  - acceptance criteria
+  - truth-layer conflict table
+  - cross-system extension boundaries
+- Verified existing runtime coverage before editing:
+  - white / black / mixed rule rewriters were already largely implemented in `modules/destiny-runtime.js`
+  - sword destiny rewrites were already wired in `app.js`
+  - thunder / flame / guard destiny rewrites still needed live combat wiring
+- Added runtime/debug support:
+  - `modules/runtime-state.js`: `debugSpawnSuppressed`
+  - `modules/debug-tools.js`: spawn suppression toggle, player-state setter, richer runtime snapshot fields/logs
+- Wired remaining skill behavior rewriters into live combat:
+  - `app.js`: thunder / flame / guard rewrite profiles and active/auto skill integration
+  - `modules/systems/combat-update.js`: thunderstorm opener multiplier, flame burn durations, pulse data propagation
+- Filled a missing black rule rewriter hook:
+  - `app.js`: `凡命·险中求利` now buffs elite / high-threat enemy HP and damage on spawn without double-applying
+- Tightened guard rewrite synchronization:
+  - `app.js`: `真传·玄罡护身` max shield now syncs immediately on loadout change, guard learn, and route lock
+- Validation:
+  - minimal batch revalidated first: `真传·万剑潮生 / 真传·巨阙镇场 / 凡命·清心护元 / 凡命·血战成狂`
+  - after minimal batch passed, validated the remaining current first-wave destinies
+  - browser validation outputs saved to:
+    - `output/destiny-batch-validation/summary.json`
+    - `output/destiny-batch-validation/full-summary.json`
+  - additional targeted reruns confirmed thunder / flame / guard signature-layer actives with correct active-slot routing
+- Local checks:
+  - `node --check app.js`
+  - `node --check modules/debug-tools.js`
+  - `node --check modules/runtime-state.js`
+  - `node --check modules/systems/combat-update.js`
+
 2026-03-19 level-up pool fix pass 1
 
 - Reworked level-up offer selection so learned skills get their own upgrade presence instead of sword-focus monopolizing the top 3 choices.
@@ -776,7 +812,172 @@ node --check modules/game-ui.js passed
     - `activeSkillTable` fallback entries for `sword / thunder / flame / guard` all reported `5`
     - saved summary in `output/active-cooldown-5s-check/summary.json`
     - no console/page errors were captured
-  - develop-web-game smoke passed:
+ - develop-web-game smoke passed:
     - output in `output/web-game/active-cooldown-5s-smoke`
     - reviewed `output/web-game/active-cooldown-5s-smoke/shot-0.png`
     - no smoke `errors*.json` file was generated
+
+2026-03-23 black-white path feedback and prompt pass
+
+- Aligned the current combat implementation to the live design thresholds and drop values:
+  - path cap `100`
+  - thresholds `30 / 60 / 100`
+  - path drops updated to the current design doc values for normal, ranged, charger, elite, mini-boss, and boss
+- Strengthened combat readability for black/white path progression without changing Q/E base logic:
+  - added distinct HUD tier states for `1/3`, `2/3`, and full charge
+  - added route-colored ready cues, impact rings, and release toasts for white `Q` and black `E`
+  - added player route aura rendering and execute markers for black tier-2 targets
+- Reworked HUD and inspect text into fact-only presentation:
+  - full-slot prompts now use direct state/result wording
+  - status inspect is grouped into `gains / losses / fixed`
+  - path hint copy now states thresholds and release facts only
+- Updated the presentation layer:
+  - route-aware toast tones
+  - white/black status pill styles
+  - inspect section layout for the new fact grouping
+
+- Verification:
+  - `node --check app.js`
+  - `node --check modules/game-ui.js`
+ - `node --check modules/inspect-system.js`
+ - `node --check modules/render/game-renderer.js`
+ - gameplay validation and feel check pending in this session after the implementation pass
+
+2026-03-23 four schools graduation + active climax pass
+
+- Goal for this pass:
+  - make the 8 routes read as 8 distinct end states
+  - make route actives feel like route-specific climax buttons instead of generic finishers
+  - stay inside the existing design doc route rules, branch rules, and active specs
+- Implementation:
+  - added route graduation metadata to `modules/game-data.js`
+    - route labels aligned to current wording (`数量流 / 大剑流 / 连锁流 / 落雷流 / 伤害流 / 范围流 / 厚盾流 / 弹反流`)
+    - added `capstoneName / identityTags / activeClimaxText / graduationSummary`
+  - added graduation helpers in `modules/gameplay-helpers.js`
+    - route stage computation now distinguishes `prototype / branched / formed / graduated`
+    - added capstone gating and graduation notice helpers
+  - wired the 8 graduation upgrades into `app.js` level choices
+    - `万剑齐发 / 巨阙镇场 / 连锁天雷 / 九霄雷池 / 烬狱轮转 / 焚身领域 / 不灭金钟 / 返天钟鸣`
+    - graduation choices only become takeable after the corresponding route reaches formed state
+    - pending capstones are force-injected into the choice pool so formed routes can actually graduate in-run
+  - strengthened route-specific active behavior in `app.js` + combat/render modules
+    - sword swarm: denser sword tide and stronger instant铺场
+    - sword greatsword: longer/heavier field sword with stronger压线/Boss pressure
+    - thunder chain: faster, more stable追链收割
+    - thunder storm: true雷池-style area takeover with heavier opener on heavy targets
+    - flame meteor: inner high-heat kill zone and local burnout follow-up
+    - flame zone: larger leave-behind ember field for封区
+    - guard bulwark: cast-time稳场 reset plus post-break last-stand reform
+    - guard counter: longer stronger反制窗口 with higher反震/反弹 payoff
+  - improved route readability in `modules/inspect-system.js`, `modules/game-ui.js`, and `styles.css`
+    - skill cards now show route badge + stage badge + graduated capstone badge
+    - skill cards now show route climax text directly on HUD
+    - inspect skill entries now include route stage, capstone name, identity tags, and graduation summary
+    - `render_game_to_text` now includes route stage, graduation fields, capstone info, and active pulses
+  - improved debug validation in `modules/debug-tools.js`
+    - added true graduated setup hook using the real capstone application path
+    - tested route skill is now forced into slot 1 for deterministic active validation
+
+- Verification:
+  - syntax:
+    - `node --check app.js`
+    - `node --check modules/inspect-system.js`
+    - `node --check modules/game-ui.js`
+    - `node --check modules/debug-tools.js`
+  - develop-web-game smoke:
+    - ran Playwright client against `http://127.0.0.1:4173`
+    - artifacts in `output/route-hud-smoke`
+  - targeted route graduation validation:
+    - artifacts in `output/route-graduation-validation`
+    - reviewed screenshots for:
+      - `sword-swarm-active.png`
+      - `thunder-storm-active.png`
+      - `flame-zone-active.png`
+      - `guard-counter-active.png`
+    - `summary.json` confirms all 8 route actives fired and route stage reported as graduated
+    - `upgrade-flow-check.json` confirms all 8 routes follow:
+      - capstone unavailable before branch
+      - still unavailable after first branch pick
+      - available after second branch pick
+      - stage progression reads `prototype -> branched -> formed -> graduated`
+    - no console/page errors captured in the targeted validation
+
+- Current tuning notes:
+  - `guard.counter` looks very explosive in the debug projectile scenario and should get another boss-pattern pass later to make sure it is not over-solving broad encounter types
+  - the route validation used targeted graduated setups plus branch-flow checks; a fully natural long-form 3-run feel pass can still be done later if the user wants a deeper endurance check
+
+2026-03-23 three-round boss first playable pass
+
+- Goal for this pass:
+  - replace the old shared-boss behavior with `3` different big-boss skill packages and pressure structures
+  - keep the existing combat/enemy/runtime base, and only land a first playable version aligned to the current design doc
+- Implementation:
+  - `balance.js`
+    - added `bossRoundTable` with `3` round-specific boss definitions
+    - each boss now has its own role, phase thresholds, phase names, pressure sequence, and skill config
+  - `app.js`
+    - `spawnBoss()` now instantiates the correct round boss instead of scaling one shared template
+    - boss state now tracks boss id/name/role, phase thresholds, intent, opening window, and round config
+    - boss phase transitions now read per-boss thresholds and clear old boss telegraphs/projectiles on phase shift
+  - `modules/systems/combat-update.js`
+    - replaced the old single `updateBoss()` pattern cycle with a round-aware boss skill loop
+    - landed first-pass boss skill execution:
+      - round 1 `问机法傀`: `试锋珠雨 / 裁线 / 断章十字 / 驻印落罚`
+      - round 2 `镇路监军`: `伴生压阵 / 督军号令 / 封路判行 / 锁域符`
+      - round 3 `终劫真相`: `坠星劫火 / 天锋判矛 / 审判十字 / 内外两断`
+    - split boss skills into real behavior categories:
+      - counterable boss projectiles carry `counterable !== false`
+      - uncounterable boss projectiles/hazards explicitly skip guard projectile reflection
+    - added boss telegraph/hazard active effects for lanes, circles, lingering seal zones, ring checks, and cone windups
+  - `modules/render/game-renderer.js`
+    - added first-pass telegraph rendering for boss cones, lanes, circles, hazard zones, and ring-collapse checks
+    - boss now shows name/phase/current skill tag and exposed ring
+    - boss projectiles now visually distinguish counterable vs uncounterable shots
+  - `modules/game-ui.js`
+    - `render_game_to_text` boss payload now includes boss id/name/role, phase name, current skill, skill category, and exposed timer
+  - `modules/debug-tools.js`
+    - added debug boss hooks for targeted validation:
+      - spawn specific round boss
+      - set boss hp
+      - force boss phase
+- Verification:
+  - syntax:
+    - `node --check app.js`
+    - `node --check balance.js`
+    - `node --check modules/systems/combat-update.js`
+    - `node --check modules/render/game-renderer.js`
+    - `node --check modules/game-ui.js`
+    - `node --check modules/debug-tools.js`
+  - develop-web-game smoke:
+    - ran Playwright client against `http://127.0.0.1:4173`
+    - latest smoke artifacts in `output/web-game`
+  - targeted boss validation:
+    - `output/boss-round-validation/summary.json`
+      - confirms round-specific boss ids, phase names, and sampled phase skills
+    - `output/boss-skill-category-validation/summary.json`
+      - confirms all `3` bosses expose both `counterable` and `uncounterable` sampled skills
+    - `output/boss-phase-threshold-check.json`
+      - confirms real threshold-driven phase transitions:
+        - round `1` -> phase `2`
+        - round `2` -> phase `2`
+        - round `3` -> phase `2` and phase `3`
+- Current tuning / follow-up notes:
+  - this pass establishes playable first differentiation and boss-duty structure; final numbers are still placeholder-level
+  - round `1` opening windows are intentionally long for active-skill teaching and can be tightened later if too forgiving
+  - round `2` summon pressure is present but still lightweight; if later feel-testing shows it is too soft, summon timing/count is the first tuning lever
+  - round `3` already has distinct multi-phase pressure, but later polish should improve the spectacle/readability of `内外两断` and phase-3 finishing windows
+
+2026-03-23 boss implementation writeback to design doc
+
+- Wrote the completed first-pass three-round boss implementation back into `private_docs/GAME_DESIGN_DOC.md`
+- Added:
+  - `11.2.1 2026-03-23 首版已落地 Boss 技能包记录`
+  - `Boss 首版实现对位记录` under the boss duty bridge tables
+- The writeback records:
+  - current round-specific boss names
+  - current phase names and thresholds
+  - current counterable / uncounterable skill split
+  - current round-by-round pressure identity
+- Intent:
+  - keep the design doc aligned with what is already playable in code
+  - avoid future regressions back to the old “one shared boss skeleton” understanding
