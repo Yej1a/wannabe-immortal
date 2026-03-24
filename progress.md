@@ -1290,3 +1290,143 @@ node --check modules/game-ui.js passed
 - Moved the hint/inspect area into a stacked right-side column below the white/black path panel without merging the two panels.
 - Updated desktop layout from four columns to three columns plus a stacked side container.
 - Verification: Playwright file-url smoke screenshot for updated right-side layout.
+
+2026-03-24 enemy silhouette pass
+
+- Split enemy body rendering in `modules/render/game-renderer.js` by role instead of drawing every enemy as a plain circle.
+- Ranged enemies now render as a diamond / focus-reticle silhouette so they stand apart from melee grunts at a glance.
+- Grunts keep a simple round body with a short forward slash mark; chargers get chevrons; elites / mini-bosses gain a ringed frame.
+- Bumped the renderer cache-bust query in `index.html`.
+- Verification:
+  - `node --check modules/render/game-renderer.js`
+  - Playwright smoke in `output/web-game/enemy-shape-smoke`
+  - targeted debug capture in `output/web-game/enemy-shape-targeted/enemy-types.png`
+
+2026-03-24 elite heavy strike pass
+
+- Added a dedicated short-windup heavy strike to the normal `elite` enemy profile.
+- New elite behavior:
+  - after a cooldown and within close trigger range, the elite enters `heavy-windup`
+  - a visible red warning ring appears before the attack resolves
+  - the strike lands as a close burst and then enters a brief recovery state
+- Tuned in `balance.js` with dedicated cooldown, trigger range, warning duration, damage multiplier, radius, and recovery.
+- Extended `render_game_to_text` enemy payload to expose `elite_state` and the telegraphed strike radius for targeted validation.
+- Verification:
+  - `node --check balance.js`
+  - `node --check modules/systems/combat-update.js`
+  - `node --check modules/render/game-renderer.js`
+  - `node --check modules/game-ui.js`
+  - Playwright smoke in `output/web-game/elite-heavy-smoke`
+  - targeted Playwright captures in `output/web-game/elite-heavy-targeted`
+  - visually checked `output/web-game/elite-heavy-targeted/windup.png`
+  - visually checked `output/web-game/elite-heavy-targeted/recover.png`
+  - `console-errors.txt` remained empty in the targeted run
+
+2026-03-24 route offer pool fix
+
+- Fixed route-upgrade offer persistence for branch/capstone choices such as the sword `万剑归宗` line.
+- Root cause:
+  - branch and capstone offers only checked route-state eligibility
+  - they did not record whether a specific route choice had already been taken
+  - completed route lines could therefore re-enter the level-up pool and crowd out normal 3-offer windows
+- Implementation:
+  - `modules/gameplay-helpers.js`
+    - added per-skill route-choice tracking via `takenChoices`
+    - branch/capstone `canTake` now rejects already-taken choices
+    - branch offers also stop once the route already has its two branch points
+  - `app.js`
+    - each skill now initializes `takenChoices`
+    - all branch/capstone level choices now pass their own choice id into the helper layer so they are tracked once taken
+- Verification:
+  - `node --check app.js`
+  - `node --check modules/gameplay-helpers.js`
+  - Playwright smoke in `output/web-game/route-offer-bug-smoke`
+  - targeted browser verification in `output/web-game/route-offer-bug-targeted`
+  - `summary.json` confirms:
+    - after `sword-swarm-1`, only `sword-swarm-2` remains in the pool
+    - after both branch choices, only `sword-swarm-capstone` remains
+    - after capstone, the entire `sword-swarm-*` line is absent from both the raw pool and `availableChoices()`
+  - visually checked `output/web-game/route-offer-bug-targeted/final.png`
+  - `console-errors.txt` remained empty in the targeted run
+
+2026-03-24 route offer stage split
+
+- Refined the route-offer rule to separate `分路卡` from `分路强化卡`.
+- Current rule:
+  - before a route is chosen, only the `-1` route-intro cards can enter the pool
+  - after a route is chosen, that intro card leaves the pool
+  - the chosen route's follow-up `-2` enhancement card can then enter the pool
+  - after the follow-up card is taken, the route capstone becomes eligible as before
+- Implementation:
+  - `modules/gameplay-helpers.js`
+    - `canTakeBranchUpgrade` now accepts a branch stage and distinguishes `intro` vs `followup`
+  - `app.js`
+    - all route `-1` entries now register as `intro`
+    - all route `-2` entries now register as `followup`
+- Verification:
+  - `node --check app.js`
+  - `node --check modules/gameplay-helpers.js`
+  - Playwright smoke in `output/web-game/route-offer-stage-smoke`
+  - targeted verification in `output/web-game/route-offer-stage-targeted`
+  - `summary.json` confirms:
+    - before route lock, pool contains `sword-swarm-1` and `sword-great-1`, but not `sword-swarm-2`
+    - after taking `sword-swarm-1`, pool contains `sword-swarm-2` and no longer contains either intro card
+    - after taking `sword-swarm-2`, pool advances to `sword-swarm-capstone`
+  - visually checked `output/web-game/route-offer-stage-targeted/final.png`
+  - `console-errors.txt` remained empty in the targeted run
+2026-03-24 destiny weight refactor
+
+- Implemented the revised destiny reward design:
+  - added reward-node tier tables for `opening / smallBoss / bigBoss / shop`
+  - added `fortune1` (`福缘残痕`) with `真传 +12% / 级`, `天命 +6% / 级`
+  - changed 8 skill rewrite destinies to `alignment: technique`; only the true hybrid trio remains `mixed`
+  - mixed destinies now use half-weight as a category modifier
+  - unlearned technique destinies can enter the pool while skill slots are not full; once 3 skills are learned, unlearned technique destinies are excluded
+  - each 3-offer batch now caps unlearned technique destinies at 1
+  - choosing an unlearned-technique destiny now biases the corresponding `new-*` skill choice via `techniqueUnlearnedNewSkillWeightMult`
+  - removed black/white path influence from destiny draw weights
+  - big-boss destiny generation now records same-run small-boss quality and guarantees a strictly higher offer quality batch when possible
+- Hooked the new reward sources into flow:
+  - opening reward uses `rewardType: opening`
+  - mini-boss reward uses `rewardType: smallBoss`
+  - final boss reward uses `rewardType: bigBoss`
+  - shop rerolls use the run-scaled `shop` weights
+- Verification:
+  - `node --check` passed for the touched destiny/helper files
+  - batch simulation results after the final fix:
+    - opening batch tianming appearance rate ~ `1.24%`
+    - unlearned-technique overflow in one batch: `0 / 3000`
+    - full 3-skill state leaking unlearned-technique offers: `0 / 3000`
+    - big-boss quality failures against same-run small-boss baseline: `0 / 5000`
+    - fortune level 5 increases `真传` materially more than `天命` in big-boss reward samples
+  - browser smoke:
+    - started local static server on `http://127.0.0.1:4173`
+    - ran Playwright client and produced `output/web-game/shot-0.png` to `shot-2.png` and matching `state-*.json`
+    - no runtime exception was introduced by the destiny refactor during this smoke pass
+- Follow-up note:
+  - Playwright capture still showed a mismatch between `state.current_modal = "starter-skill"` and the screenshot without a visible modal; this looks like an existing modal/render testing issue rather than a new destiny-logic regression, but it is worth checking in-browser before broader balance testing.
+
+2026-03-24 modal screenshot mismatch fix
+
+- Root cause confirmed: the game modal was rendering correctly, but the Playwright helper in `$CODEX_HOME/skills/develop-web-game/scripts/web_game_playwright_client.js` preferred raw canvas capture, so DOM overlays like `#modal-root` and `.overlay-message` were omitted from screenshots.
+- Fixed the helper by adding visible-overlay detection and forcing a viewport screenshot whenever modal/overlay DOM is present.
+- Re-ran the smoke check:
+  - `state-0.json` still reports `current_modal = "starter-skill"`
+  - `output/web-game/modal-check/shot-0.png` now visibly contains the starter modal
+- Conclusion: the inconsistency was in the test harness screenshot path, not in the game modal flow.
+
+2026-03-24 mini-boss damage retune
+
+- Updated the three small bosses to the new damage targets:
+  - boss 1 pulse damage = `50`
+  - boss 2 teleport damage = `40`, projectile damage = `35`
+  - boss 3 dash hit = `75`, shockwave = `50`, shockwave radius = `100`, projectile damage = `40`
+- Also fixed a logic/config mismatch so mini-boss projectile damage uses per-boss multipliers from `miniBossTable` instead of partial hardcoded values in combat logic.
+- Added a teleport landing damage check for boss 2 and aligned its telegraph radius with the damage radius.
+- Verification:
+  - `node --check balance.js`
+  - `node --check modules/systems/combat-update.js`
+  - config smoke output confirmed:
+    - boss 1 pulse = `50`
+    - boss 2 teleport = `40`, projectile = `35 x 6`
+    - boss 3 dash = `75`, shockwave = `50`, projectile = `40 x 4`

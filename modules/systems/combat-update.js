@@ -164,7 +164,7 @@
       enemy.miniBossTeleportTarget = target;
       enemy.miniBossTeleportMarkerUntil = state.time + duration;
       enemy.miniBossTeleportMarkerDuration = duration;
-      enemy.miniBossTeleportRadius = enemy.radius + 20;
+      enemy.miniBossTeleportRadius = profile.teleportDamageRadius || enemy.radius + 20;
       enemy.miniBossTelegraphDuration = duration;
       enemy.miniBossShieldUntil = state.time + duration;
       enemy.attackTimer = Math.max(enemy.attackTimer, duration);
@@ -196,7 +196,13 @@
       const spread = profile.spread || 0;
       for (let i = 0; i < projectileCount; i += 1) {
         const angle = baseAngle + (i - (projectileCount - 1) / 2) * spread;
-        spawnEnemyProjectile(enemy, angle, profile.projectileSpeed, profile.projectileRadius || 7);
+        spawnEnemyProjectile(
+          enemy,
+          angle,
+          profile.projectileSpeed,
+          profile.projectileRadius || 7,
+          profile.projectileDamageMult || 1,
+        );
       }
       enemy.miniBossShotTimer = profile.shotCooldown;
       pushMiniBossVisual(enemy, enemy.radius + 18);
@@ -289,7 +295,13 @@
             pushMiniBossVisual(enemy, enemy.radius + 20);
             enemy.x = enemy.miniBossTeleportTarget.x;
             enemy.y = enemy.miniBossTeleportTarget.y;
-            pushMiniBossVisual(enemy, enemy.radius + 28);
+            pushMiniBossVisual(enemy, enemy.miniBossTeleportRadius || enemy.radius + 28);
+            if (
+              (profile.teleportDamage || 0) > 0
+              && distance(enemy, state.player) <= (enemy.miniBossTeleportRadius || enemy.radius + 28) + state.player.radius
+            ) {
+              hitPlayer(profile.teleportDamage, enemy);
+            }
             enemy.miniBossState = "teleport-recover";
             enemy.miniBossStateTimer = profile.teleportRecovery || 0.35;
             enemy.miniBossTeleportMarkerUntil = 0;
@@ -336,7 +348,13 @@
           const spread = profile.spread || 0.2;
           for (let i = 0; i < projectileCount; i += 1) {
             const angle = baseAngle + (i - (projectileCount - 1) / 2) * spread;
-            spawnEnemyProjectile(enemy, angle, profile.projectileSpeed || 250, 7);
+            spawnEnemyProjectile(
+              enemy,
+              angle,
+              profile.projectileSpeed || 250,
+              profile.projectileRadius || 7,
+              profile.projectileDamageMult || 1,
+            );
           }
           enemy.shotTimer = profile.shotCooldown || 1.65;
           pushMiniBossVisual(enemy, enemy.radius + 18);
@@ -1165,6 +1183,58 @@
           updateMiniBoss(enemy, template, dt, dx, dy, dist, overlap, speedMult);
           return;
         }
+        if (enemy.type === "elite") {
+          enemy.eliteState = enemy.eliteState || "idle";
+          enemy.eliteHeavyTimer = (enemy.eliteHeavyTimer ?? ((template.heavyCooldown || 3.4) * 0.65)) - dt;
+          if (enemy.eliteState === "heavy-windup") {
+            enemy.eliteStateTimer = Math.max(0, (enemy.eliteStateTimer || 0) - dt);
+            const tangentX = -dy / dist;
+            const tangentY = dx / dist;
+            enemy.x += tangentX * enemy.speed * speedMult * 0.18 * dt;
+            enemy.y += tangentY * enemy.speed * speedMult * 0.18 * dt;
+            if (enemy.eliteStateTimer <= 0) {
+              enemy.eliteHeavyTelegraphUntil = 0;
+              state.pulses.push({
+                x: enemy.x,
+                y: enemy.y,
+                radius: template.heavyRadius || 88,
+                damage: 0,
+                kind: "burst",
+                time: 0.24,
+                duration: 0.24,
+                hit: new Set(),
+                affectsBoss: false,
+              });
+              if (distance(enemy, state.player) <= (template.heavyRadius || 88) + state.player.radius) {
+                hitPlayer(enemy.damage * (template.heavyDamageMult || 1.9), enemy);
+              }
+              enemy.eliteState = "heavy-recover";
+              enemy.eliteStateTimer = template.heavyRecovery || 0.4;
+              enemy.attackTimer = Math.max(enemy.attackTimer, template.heavyRecovery || 0.4);
+            }
+            return;
+          }
+          if (enemy.eliteState === "heavy-recover") {
+            enemy.eliteStateTimer = Math.max(0, (enemy.eliteStateTimer || 0) - dt);
+            const tangentX = -dy / dist;
+            const tangentY = dx / dist;
+            enemy.x += tangentX * enemy.speed * speedMult * 0.26 * dt;
+            enemy.y += tangentY * enemy.speed * speedMult * 0.26 * dt;
+            if (enemy.eliteStateTimer <= 0) {
+              enemy.eliteState = "idle";
+            }
+            return;
+          }
+          if (enemy.eliteHeavyTimer <= 0 && dist <= (template.heavyTriggerRange || 118) && enemy.attackTimer <= 0) {
+            enemy.eliteState = "heavy-windup";
+            enemy.eliteStateTimer = template.heavyWindup || 0.7;
+            enemy.eliteHeavyTimer = template.heavyCooldown || 3.4;
+            enemy.eliteHeavyTelegraphUntil = state.time + (template.heavyWindup || 0.7);
+            enemy.eliteHeavyTelegraphDuration = template.heavyWindup || 0.7;
+            enemy.eliteHeavyRadius = template.heavyRadius || 88;
+            return;
+          }
+        }
         if (enemy.type === "ranged") {
           enemy.shotTimer -= dt;
           if (dist > (template.preferredRange || 160)) {
@@ -1312,6 +1382,8 @@
         maybeHandlePostBossInfusion(() => openDestinyOffer({
           title: "道途进了一步",
           body: "击败小关首领后，从三枚命格中择一收入命盘，再进入下一场战斗。",
+          rewardType: "smallBoss",
+          rewardRunIndex: state.campaign.runIndex,
           onComplete: () => advanceCampaign(),
         }));
       }

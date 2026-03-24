@@ -1177,13 +1177,162 @@
       }
     }
 
+    function drawEliteTelegraph(ctx, enemy) {
+      if (enemy.isMiniBoss || enemy.type !== "elite") return;
+      const telegraphUntil = enemy.eliteHeavyTelegraphUntil || 0;
+      if (telegraphUntil <= state.time) return;
+      const remaining = Math.max(0, telegraphUntil - state.time);
+      const duration = Math.max(0.01, enemy.eliteHeavyTelegraphDuration || 0.7);
+      const ratio = clamp(remaining / duration, 0, 1);
+      const strikeRadius = enemy.eliteHeavyRadius || 88;
+      ctx.save();
+      ctx.translate(enemy.x, enemy.y);
+      ctx.fillStyle = `rgba(255, 92, 92, ${0.05 + (1 - ratio) * 0.1})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, strikeRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(255, 142, 120, ${0.5 + (1 - ratio) * 0.24})`;
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 8]);
+      ctx.beginPath();
+      ctx.arc(0, 0, strikeRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      const glyphCount = 5;
+      for (let i = 0; i < glyphCount; i += 1) {
+        const angle = (Math.PI * 2 * i) / glyphCount + state.time * 0.55;
+        ctx.strokeStyle = `rgba(255, 232, 214, ${0.34 + (1 - ratio) * 0.18})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(angle) * (strikeRadius - 12), Math.sin(angle) * (strikeRadius - 12));
+        ctx.lineTo(Math.cos(angle) * (strikeRadius + 12), Math.sin(angle) * (strikeRadius + 12));
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function getEnemyPalette(enemy) {
+      if (enemy.color === "white") {
+        return {
+          fill: COLORS.enemyWhite,
+          stroke: "#c5b48a",
+          accent: "#8fd3ba",
+          core: "#fff5db",
+          shadow: "80, 66, 42",
+        };
+      }
+      return {
+        fill: COLORS.enemyBlack,
+        stroke: "#312643",
+        accent: "#9c84c8",
+        core: "#cabce6",
+        shadow: "20, 14, 34",
+      };
+    }
+
+    function drawEnemyBody(ctx, enemy) {
+      const palette = getEnemyPalette(enemy);
+      ctx.save();
+      ctx.translate(enemy.x, enemy.y);
+
+      ctx.fillStyle = withAlpha("#000000", 0.14, palette.shadow);
+      ctx.beginPath();
+      ctx.ellipse(0, enemy.radius * 0.46, enemy.radius * 0.84, enemy.radius * 0.38, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (enemy.type === "ranged") {
+        ctx.fillStyle = palette.fill;
+        ctx.strokeStyle = palette.stroke;
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(enemy.radius * 0.94, 0);
+        ctx.lineTo(0, -enemy.radius * 0.9);
+        ctx.lineTo(-enemy.radius * 0.94, 0);
+        ctx.lineTo(0, enemy.radius * 0.9);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.strokeStyle = withAlpha(palette.accent, 0.82, "143, 211, 186");
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.arc(0, 0, enemy.radius * 0.56, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(-enemy.radius * 0.62, 0);
+        ctx.lineTo(enemy.radius * 0.62, 0);
+        ctx.moveTo(0, -enemy.radius * 0.62);
+        ctx.lineTo(0, enemy.radius * 0.62);
+        ctx.stroke();
+
+        ctx.fillStyle = withAlpha(palette.core, 0.96, "255, 245, 219");
+        ctx.beginPath();
+        ctx.moveTo(enemy.radius * 0.22, 0);
+        ctx.lineTo(0, -enemy.radius * 0.22);
+        ctx.lineTo(-enemy.radius * 0.22, 0);
+        ctx.lineTo(0, enemy.radius * 0.22);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        return;
+      }
+
+      ctx.fillStyle = palette.fill;
+      ctx.beginPath();
+      ctx.arc(0, 0, enemy.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = palette.stroke;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      if (enemy.type === "charger") {
+        ctx.strokeStyle = withAlpha(palette.accent, 0.74, "143, 211, 186");
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.moveTo(enemy.radius * 0.05, -enemy.radius * 0.38);
+        ctx.lineTo(enemy.radius * 0.52, -enemy.radius * 0.06);
+        ctx.lineTo(enemy.radius * 0.05, enemy.radius * 0.26);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(-enemy.radius * 0.18, -enemy.radius * 0.28);
+        ctx.lineTo(enemy.radius * 0.28, 0);
+        ctx.lineTo(-enemy.radius * 0.18, enemy.radius * 0.28);
+        ctx.stroke();
+      } else if (enemy.type === "elite" || enemy.isMiniBoss) {
+        ctx.strokeStyle = withAlpha(palette.accent, 0.64, "143, 211, 186");
+        ctx.lineWidth = 2.6;
+        ctx.beginPath();
+        ctx.arc(0, 0, enemy.radius * 0.68, 0, Math.PI * 2);
+        ctx.stroke();
+        for (let i = 0; i < 4; i += 1) {
+          const angle = (Math.PI * 2 * i) / 4 + Math.PI / 4;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(angle) * enemy.radius * 0.74, Math.sin(angle) * enemy.radius * 0.74);
+          ctx.lineTo(Math.cos(angle) * enemy.radius * 0.96, Math.sin(angle) * enemy.radius * 0.96);
+          ctx.stroke();
+        }
+      } else {
+        ctx.fillStyle = withAlpha(palette.core, 0.88, "255, 245, 219");
+        ctx.beginPath();
+        ctx.arc(0, 0, enemy.radius * 0.28, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = withAlpha(palette.accent, 0.72, "143, 211, 186");
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.moveTo(-enemy.radius * 0.2, -enemy.radius * 0.42);
+        ctx.lineTo(enemy.radius * 0.34, 0);
+        ctx.lineTo(-enemy.radius * 0.2, enemy.radius * 0.42);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
     function drawEnemies(ctx) {
       state.enemies.forEach((enemy) => {
         drawMiniBossTelegraph(ctx, enemy);
-        ctx.fillStyle = enemy.color === "white" ? COLORS.enemyWhite : COLORS.enemyBlack;
-        ctx.beginPath();
-        ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
-        ctx.fill();
+        drawEliteTelegraph(ctx, enemy);
+        drawEnemyBody(ctx, enemy);
         drawTargetStatusFx(ctx, enemy, Math.max(0.9, enemy.radius / 16));
         drawExecuteMarker(ctx, enemy);
         ctx.fillStyle = "rgba(255,255,255,0.15)";

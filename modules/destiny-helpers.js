@@ -1,5 +1,6 @@
 (function initDestinyHelpers(global) {
   const {
+    BALANCE,
     META,
     baseStats,
     DESTINY_SLOT_CAP,
@@ -17,6 +18,21 @@
   const SKILL_REWRITE_DESTINY_TO_SKILL = Object.fromEntries(
     Object.values(DESTINY_RUNTIME_RULES.skillRewriteBindings || {}).map((binding) => [binding.destinyId, binding.skillId]),
   );
+  const DESTINY_TABLE = BALANCE.destinyTable || {};
+  const DESTINY_REWARD_TIER_WEIGHTS = DESTINY_TABLE.rewardTierWeights || {};
+  const DESTINY_MIXED_ALIGNMENT_WEIGHT_MULT = DESTINY_TABLE.mixedAlignmentWeightMult || 0.5;
+  const DESTINY_QUALITY_SCORES = DESTINY_TABLE.qualityScores || {
+    common: 1,
+    true: 2.5,
+    fated: 5,
+  };
+  const DESTINY_BOSS_QUALITY_REROLLS = DESTINY_TABLE.bossQualityRerolls || 2;
+  const DESTINY_MAX_UNLEARNED_TECHNIQUE_OFFERS = DESTINY_TABLE.maxUnlearnedTechniqueOffers || 1;
+  const DESTINY_FORTUNE_UPGRADE_ID = DESTINY_TABLE.fortuneUpgradeId || "fortune1";
+  const DESTINY_FORTUNE_PER_LEVEL = DESTINY_TABLE.fortunePerLevel || {
+    true: 0.12,
+    fated: 0.06,
+  };
 
   function createFreshDestinyState() {
     return {
@@ -127,9 +143,10 @@
   }
 
   function getAlignmentCounts(metaState) {
-    const counts = { white: 0, black: 0, mixed: 0 };
+    const counts = { white: 0, black: 0, mixed: 0, technique: 0 };
     getEquippedDestinyEntries(metaState).forEach((entry) => {
-      counts[getEntryAlignment(entry)] += 1;
+      const alignment = getEntryAlignment(entry);
+      counts[alignment] = (counts[alignment] || 0) + 1;
     });
     return counts;
   }
@@ -154,9 +171,52 @@
     return "未知";
   }
 
-  function getDestinyWeight(idOrTier) {
-    const tier = destinyCatalog[idOrTier]?.tier || idOrTier;
-    return DESTINY_TIER_WEIGHTS[tier] || 1;
+  function getDestinyRewardTierWeights(source = "generic", runIndex = 1) {
+    const rewardWeights = DESTINY_REWARD_TIER_WEIGHTS[source];
+    if (!rewardWeights) return DESTINY_TIER_WEIGHTS;
+    if (typeof rewardWeights.common === "number") return rewardWeights;
+    return rewardWeights[runIndex] || rewardWeights[3] || rewardWeights[1] || DESTINY_TIER_WEIGHTS;
+  }
+
+  function getDestinyFortuneLevel(metaState) {
+    return Math.max(0, metaState?.upgrades?.[DESTINY_FORTUNE_UPGRADE_ID] || 0);
+  }
+
+  function getDestinyFortuneMultiplier(tier, metaState) {
+    const level = getDestinyFortuneLevel(metaState);
+    if (level <= 0) return 1;
+    const perLevel = DESTINY_FORTUNE_PER_LEVEL[tier] || 0;
+    return 1 + perLevel * level;
+  }
+
+  function getDestinyOfferContext(options = {}, state = null) {
+    const base = typeof options === "number" ? { count: options } : { ...(options || {}) };
+    return {
+      count: Math.max(1, base.count || 3),
+      source: base.source || "generic",
+      runIndex: Math.max(1, base.runIndex || state?.campaign?.runIndex || 1),
+      applyFortune: !!base.applyFortune,
+      applyCategoryModifier: base.applyCategoryModifier !== false,
+      maxUnlearnedTechniqueOffers: base.maxUnlearnedTechniqueOffers ?? DESTINY_MAX_UNLEARNED_TECHNIQUE_OFFERS,
+    };
+  }
+
+  function getDestinyWeight(idOrTier, options = {}) {
+    const def = destinyCatalog[idOrTier] || null;
+    const tier = def?.tier || idOrTier;
+    const source = options.source || "generic";
+    const runIndex = Math.max(1, options.runIndex || 1);
+    const tierWeights = source === "generic"
+      ? DESTINY_TIER_WEIGHTS
+      : getDestinyRewardTierWeights(source, runIndex);
+    let weight = tierWeights?.[tier] ?? DESTINY_TIER_WEIGHTS[tier] ?? 1;
+    if (def?.alignment === "mixed" && options.applyCategoryModifier !== false) {
+      weight *= DESTINY_MIXED_ALIGNMENT_WEIGHT_MULT;
+    }
+    if (options.applyFortune) {
+      weight *= getDestinyFortuneMultiplier(tier, options.metaState);
+    }
+    return weight;
   }
 
   function weightedPick(items) {
@@ -176,26 +236,137 @@
     return unlockedIds.filter((id) => !metaState.destiny.owned[id]);
   }
 
-  function isDestinyOfferEligible(id, state) {
+  function getTechniqueDestinySkillId(id) {
+    return SKILL_REWRITE_DESTINY_TO_SKILL[id] || null;
+  }
+
+  function isUnlearnedTechniqueOffer(id, state) {
+    const skillId = getTechniqueDestinySkillId(id);
+    if (!skillId) return false;
+    return !state?.player?.skills?.[skillId];
+  }
+
+  function isDestinyOfferEligible(id, state, options = {}) {
     const def = destinyCatalog[id];
     if (!def) return false;
     if (def.category !== "skill-rewrite") return true;
-    const skillId = SKILL_REWRITE_DESTINY_TO_SKILL[id];
-    return !!skillId && !!state?.player?.skills?.[skillId];
+    const skillId = getTechniqueDestinySkillId(id);
+    if (!skillId) return false;
+    if (state?.player?.skills?.[skillId]) return true;
+    return (state?.player?.skillOrder?.length || 0) < 3 && options.allowUnlearnedTechnique !== false;
   }
 
-  function getRandomDestinyOffers(metaState, state, count = 3) {
-    const pool = getMissingDestinyIds(metaState).filter((id) => isDestinyOfferEligible(id, state));
+  function getDestinyOfferQualityScore(offers = []) {
+    return offers.reduce((sum, offer) => {
+      const id = typeof offer === "string" ? offer : offer?.id;
+      const tier = destinyCatalog[id]?.tier || "common";
+      return sum + (DESTINY_QUALITY_SCORES[tier] || 0);
+    }, 0);
+  }
+
+  function drawDestinyOffers(metaState, state, context) {
+    const pool = getMissingDestinyIds(metaState).filter((id) => isDestinyOfferEligible(id, state, context));
     const offers = [];
-    while (pool.length > 0 && offers.length < count) {
-      const id = weightedPick(
-        pool.map((destinyId) => ({
+    let unlearnedTechniqueCount = 0;
+    while (pool.length > 0 && offers.length < context.count) {
+      const weightedPool = pool
+        .filter((destinyId) => (
+          !isUnlearnedTechniqueOffer(destinyId, state)
+          || unlearnedTechniqueCount < context.maxUnlearnedTechniqueOffers
+        ))
+        .map((destinyId) => ({
           value: destinyId,
-          weight: getDestinyWeight(destinyId),
-        })),
-      );
+          weight: getDestinyWeight(destinyId, {
+            source: context.source,
+            runIndex: context.runIndex,
+            metaState,
+            applyFortune: context.applyFortune,
+            applyCategoryModifier: context.applyCategoryModifier,
+          }),
+        }))
+        .filter((entry) => entry.weight > 0);
+      if (!weightedPool.length) break;
+      const id = weightedPick(weightedPool);
       pool.splice(pool.indexOf(id), 1);
+      if (isUnlearnedTechniqueOffer(id, state)) unlearnedTechniqueCount += 1;
       offers.push({ id });
+    }
+    return offers;
+  }
+
+  function getCurrentRunSmallBossQualityBaseline(state, runIndex) {
+    if (!state?.campaign || state.campaign.runIndex !== runIndex) return 0;
+    const count = state.campaign.smallBossOfferCount || 0;
+    if (count <= 0) return 0;
+    return (state.campaign.smallBossOfferQualityTotal || 0) / count;
+  }
+
+  function canPromoteOfferWithCandidate(offers, replaceIndex, candidateId, state, context) {
+    let unlearnedTechniqueCount = 0;
+    for (let index = 0; index < offers.length; index += 1) {
+      const offerId = index === replaceIndex ? candidateId : offers[index].id;
+      if (isUnlearnedTechniqueOffer(offerId, state)) unlearnedTechniqueCount += 1;
+    }
+    return unlearnedTechniqueCount <= context.maxUnlearnedTechniqueOffers;
+  }
+
+  function promoteDestinyOffers(metaState, state, offers, context, baselineScore) {
+    if (!offers.length) return offers;
+    let nextOffers = offers.map((offer) => ({ ...offer }));
+    while (getDestinyOfferQualityScore(nextOffers) <= baselineScore) {
+      let bestUpgrade = null;
+      const currentIds = new Set(nextOffers.map((offer) => offer.id));
+      for (let replaceIndex = 0; replaceIndex < nextOffers.length; replaceIndex += 1) {
+        const currentQuality = DESTINY_QUALITY_SCORES[destinyCatalog[nextOffers[replaceIndex].id]?.tier] || 0;
+        const candidates = getMissingDestinyIds(metaState)
+          .filter((id) => !currentIds.has(id))
+          .filter((id) => isDestinyOfferEligible(id, state, context))
+          .filter((id) => (DESTINY_QUALITY_SCORES[destinyCatalog[id]?.tier] || 0) > currentQuality)
+          .filter((id) => canPromoteOfferWithCandidate(nextOffers, replaceIndex, id, state, context));
+        candidates.forEach((id) => {
+          const candidateWeight = getDestinyWeight(id, {
+            source: context.source,
+            runIndex: context.runIndex,
+            metaState,
+            applyFortune: context.applyFortune,
+            applyCategoryModifier: context.applyCategoryModifier,
+          });
+          if (candidateWeight <= 0) return;
+          const promotedOffers = nextOffers.map((offer, index) => (index === replaceIndex ? { id } : offer));
+          const promotedScore = getDestinyOfferQualityScore(promotedOffers);
+          if (
+            !bestUpgrade
+            || promotedScore > bestUpgrade.score
+            || (promotedScore === bestUpgrade.score && candidateWeight > bestUpgrade.weight)
+          ) {
+            bestUpgrade = {
+              replaceIndex,
+              id,
+              score: promotedScore,
+              weight: candidateWeight,
+            };
+          }
+        });
+      }
+      if (!bestUpgrade || bestUpgrade.score <= getDestinyOfferQualityScore(nextOffers)) break;
+      nextOffers = nextOffers.map((offer, index) => (index === bestUpgrade.replaceIndex ? { id: bestUpgrade.id } : offer));
+    }
+    return nextOffers;
+  }
+
+  function getRandomDestinyOffers(metaState, state, options = 3) {
+    const context = getDestinyOfferContext(options, state);
+    let offers = drawDestinyOffers(metaState, state, context);
+    if (context.source !== "bigBoss") return offers;
+    const baselineScore = getCurrentRunSmallBossQualityBaseline(state, context.runIndex);
+    if (baselineScore <= 0) return offers;
+    let qualityScore = getDestinyOfferQualityScore(offers);
+    for (let attempt = 0; attempt < DESTINY_BOSS_QUALITY_REROLLS && qualityScore <= baselineScore; attempt += 1) {
+      offers = drawDestinyOffers(metaState, state, context);
+      qualityScore = getDestinyOfferQualityScore(offers);
+    }
+    if (qualityScore <= baselineScore) {
+      offers = promoteDestinyOffers(metaState, state, offers, context, baselineScore);
     }
     return offers;
   }
@@ -208,6 +379,7 @@
   function getAlignmentLabel(alignment) {
     if (alignment === "white") return "白道";
     if (alignment === "black") return "黑道";
+    if (alignment === "technique") return "技法";
     return "混元";
   }
 
@@ -306,10 +478,22 @@
     });
     const rerollIds = poolIds.filter((id) => id !== targetId);
     const candidateIds = rerollIds.length ? rerollIds : poolIds;
-    const totalWeight = candidateIds.reduce((sum, id) => sum + getDestinyWeight(id), 0);
+    const totalWeight = candidateIds.reduce((sum, id) => sum + getDestinyWeight(id, {
+      source: "generic",
+      runIndex: state?.campaign?.runIndex || 1,
+      metaState,
+      applyFortune: false,
+      applyCategoryModifier: true,
+    }), 0);
     return DESTINY_TIER_ORDER.map((tier) => {
       const ids = candidateIds.filter((id) => destinyCatalog[id].tier === tier);
-      const tierWeight = ids.reduce((sum, id) => sum + getDestinyWeight(id), 0);
+      const tierWeight = ids.reduce((sum, id) => sum + getDestinyWeight(id, {
+        source: "generic",
+        runIndex: state?.campaign?.runIndex || 1,
+        metaState,
+        applyFortune: false,
+        applyCategoryModifier: true,
+      }), 0);
       return {
         tier,
         chance: totalWeight > 0 ? (tierWeight / totalWeight) * 100 : 0,
@@ -346,7 +530,10 @@
     getDestinyWeight,
     weightedPick,
     getMissingDestinyIds,
+    getTechniqueDestinySkillId,
+    isUnlearnedTechniqueOffer,
     isDestinyOfferEligible,
+    getDestinyOfferQualityScore,
     getRandomDestinyOffers,
     describeDestiny,
     getAlignmentLabel,

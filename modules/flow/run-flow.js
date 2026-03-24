@@ -52,6 +52,8 @@
           openDestinyOffer({
             title: "命格初定",
             body: "轮回初启，从三枚命格中择一带入本局。",
+            rewardType: "opening",
+            rewardRunIndex: state.campaign.runIndex,
           });
         });
       });

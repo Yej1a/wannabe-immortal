@@ -65,7 +65,7 @@
     }
 
     function getAlignmentCounts() {
-      const counts = { white: 0, black: 0, mixed: 0 };
+      const counts = { white: 0, black: 0, mixed: 0, technique: 0 };
       (metaState?.destiny?.equipped || []).forEach((id) => {
         const alignment = metaState?.destiny?.owned?.[id]?.alignment || "mixed";
         counts[alignment] = (counts[alignment] || 0) + 1;

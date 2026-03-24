@@ -21,6 +21,8 @@
       miniBossSpawned: false,
       miniBossDefeated: false,
       bossSpawned: false,
+      smallBossOfferQualityTotal: 0,
+      smallBossOfferCount: 0,
     };
   }
 

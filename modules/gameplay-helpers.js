@@ -141,16 +141,37 @@
       return skill?.routePoints?.[routeId] || 0;
     }
 
-    function canTakeBranchUpgrade(stateRef, skillId, routeId) {
+    function hasTakenSkillChoice(skill, choiceId) {
+      if (!choiceId) return false;
+      return !!skill?.takenChoices?.[choiceId];
+    }
+
+    function markSkillChoiceTaken(skill, choiceId) {
+      if (!skill || !choiceId) return;
+      if (!skill.takenChoices) skill.takenChoices = {};
+      skill.takenChoices[choiceId] = true;
+    }
+
+    function canTakeBranchUpgrade(stateRef, skillId, routeId, choiceId = null, branchStage = "followup") {
       const skill = stateRef.player.skills[skillId];
       if (!skill) return false;
       if ((skill.baseUpgrades || 0) < BRANCH_UNLOCK_BASE_UPGRADES) return false;
+      if (hasTakenSkillChoice(skill, choiceId)) return false;
+      const branchCount = getSkillBranchCount(skill, routeId);
+      if (branchCount >= 2) return false;
+      if (branchStage === "intro") {
+        return !skill.route;
+      }
+      if (branchStage === "followup") {
+        return skill.route === routeId && branchCount >= 1;
+      }
       return !skill.route || skill.route === routeId;
     }
 
-    function canTakeCapstoneUpgrade(stateRef, skillId, routeId) {
+    function canTakeCapstoneUpgrade(stateRef, skillId, routeId, choiceId = null) {
       const skill = stateRef.player.skills[skillId];
       if (!skill || skill.route !== routeId) return false;
+      if (hasTakenSkillChoice(skill, choiceId)) return false;
       if (getSkillBranchCount(skill, routeId) < 2) return false;
       return skill.capstone !== routeId;
     }
@@ -181,7 +202,7 @@
       stateRef.player.skillFocus[skillId] = (stateRef.player.skillFocus[skillId] || 0) + 1;
     }
 
-    function applySkillBranchUpgrade(stateRef, skillId, routeId, mutator) {
+    function applySkillBranchUpgrade(stateRef, skillId, routeId, choiceId, mutator) {
       const skill = stateRef.player.skills[skillId];
       if (!skill) return;
       mutator(skill);
@@ -192,16 +213,18 @@
       }
       if (!skill.routePoints) skill.routePoints = {};
       skill.routePoints[routeId] = (skill.routePoints[routeId] || 0) + 1;
+      markSkillChoiceTaken(skill, choiceId);
       stateRef.player.skillFocus[skillId] = (stateRef.player.skillFocus[skillId] || 0) + 1;
     }
 
-    function applySkillCapstoneUpgrade(stateRef, skillId, routeId, mutator) {
+    function applySkillCapstoneUpgrade(stateRef, skillId, routeId, choiceId, mutator) {
       const skill = stateRef.player.skills[skillId];
       if (!skill) return;
       mutator(skill);
       skill.rank += 1;
       skill.route = routeId;
       skill.capstone = routeId;
+      markSkillChoiceTaken(skill, choiceId);
       markRouteGraduation(stateRef, skillId, routeId);
       stateRef.player.skillFocus[skillId] = (stateRef.player.skillFocus[skillId] || 0) + 1;
     }

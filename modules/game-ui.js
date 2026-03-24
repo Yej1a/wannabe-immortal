@@ -434,6 +434,8 @@
         y: Math.round(enemy.y),
         hp: Math.round(enemy.hp),
         color: enemy.color,
+        elite_state: enemy.eliteState || null,
+        elite_heavy_radius: (enemy.eliteHeavyTelegraphUntil || 0) > state.time ? Math.round(enemy.eliteHeavyRadius || 0) : null,
         is_mini_boss: !!enemy.isMiniBoss,
         mini_boss_kind: enemy.miniBossKind || null,
         mini_boss_state: enemy.miniBossState || null,

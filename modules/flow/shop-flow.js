@@ -106,7 +106,12 @@
     }
 
     function rerollShopDestinyOffers() {
-      state.shopDestinyOffers = getRandomDestinyOffers(3).map((offer) => offer.id);
+      state.shopDestinyOffers = getRandomDestinyOffers({
+        count: 3,
+        source: "shop",
+        runIndex: state.campaign.runIndex,
+        applyFortune: true,
+      }).map((offer) => offer.id);
     }
 
     function refreshRunShop() {
@@ -174,6 +179,8 @@
                 state.running = true;
                 state.campaign.runIndex += 1;
                 state.campaign.stageIndex = 1;
+                state.campaign.smallBossOfferQualityTotal = 0;
+                state.campaign.smallBossOfferCount = 0;
                 state.runStartTime = state.time;
                 state.lastRunDaoMarks = 0;
                 state.dandingTriggerCount = 0;

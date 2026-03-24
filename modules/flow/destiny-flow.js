@@ -10,6 +10,7 @@
       createDestinyPreviewSnapshot,
       describeDestinyStatDelta,
       getRandomDestinyOffers,
+      getDestinyOfferQualityScore = () => 0,
       getEquippedDestinyEntries,
       getDestinyTierLabel = () => "",
       getDestinyWeight = () => 1,
@@ -426,11 +427,26 @@
       });
     }
 
-    function openDestinyOffer({ title = "道途进了一步", body = "从三枚命格中择一，作为本次新命格。", onComplete = () => {} } = {}) {
-      const offers = getRandomDestinyOffers(3);
+    function openDestinyOffer({
+      title = "道途进了一步",
+      body = "从三枚命格中择一，作为本次新命格。",
+      rewardType = "generic",
+      rewardRunIndex = state.campaign.runIndex,
+      onComplete = () => {},
+    } = {}) {
+      const offers = getRandomDestinyOffers({
+        count: 3,
+        source: rewardType,
+        runIndex: rewardRunIndex,
+        applyFortune: rewardType !== "generic",
+      });
       if (!offers.length) {
         onComplete();
         return;
+      }
+      if (rewardType === "smallBoss") {
+        state.campaign.smallBossOfferQualityTotal = (state.campaign.smallBossOfferQualityTotal || 0) + getDestinyOfferQualityScore(offers);
+        state.campaign.smallBossOfferCount = (state.campaign.smallBossOfferCount || 0) + 1;
       }
       state.currentDestinyOffers = offers;
       state.paused = true;

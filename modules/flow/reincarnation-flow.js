@@ -51,7 +51,9 @@
                 ? `白点获取 +${Math.round(upgrade.effectPerLevel * 100)}%`
                 : id === "black1"
                   ? `黑点获取 +${Math.round(upgrade.effectPerLevel * 100)}%`
-                  : "开局自选一个额外术法";
+                  : id === "fortune1"
+                    ? "真传权重 +12% / 级，天命权重 +6% / 级"
+                    : "开局自选一个额外术法";
         return {
           title: `${upgrade.name}  Lv.${level}/${upgrade.maxLevel}${locked ? " | 已满" : ""}`,
           body: `${effectText} | 花费 ${upgrade.cost} 轮回点${metaState.points < upgrade.cost && !locked ? " | 轮回点不足" : ""}`,
@@ -130,7 +132,7 @@
         bodyHtml: `
           <div class="ending-hero">
             <div class="ending-result">${result}</div>
-            <div class="ending-copy">白道命格 ${counts.white} · 黑道命格 ${counts.black} · 混元命格 ${counts.mixed}</div>
+            <div class="ending-copy">白道命格 ${counts.white} · 黑道命格 ${counts.black} · 技法命格 ${counts.technique || 0} · 混元命格 ${counts.mixed}</div>
             <div class="ending-copy">此世已终，轮回余烬归于命盘，下一世仍可继续修行。</div>
           </div>
         `,
@@ -182,6 +184,8 @@
             openDestinyOffer({
               title: "大劫既破",
               body: `第${state.campaign.runIndex}个大 Boss 已败，从三枚命格中择一收入命盘。`,
+              rewardType: "bigBoss",
+              rewardRunIndex: state.campaign.runIndex,
               onComplete: settleClear,
             });
           };

@@ -109,6 +109,9 @@ const {
 const SKILL_ART = Object.fromEntries(
   Object.entries(skills).map(([id, skill]) => [id, skill.art || {}]),
 );
+const TECHNIQUE_DESTINY_SKILL_MAP = Object.fromEntries(
+  Object.values(DESTINY_RUNTIME_RULES.skillRewriteBindings || {}).map((binding) => [binding.destinyId, binding.skillId]),
+);
 const {
   createCampaignState: createCampaignStateImpl,
   createMetaState: createMetaStateImpl,
@@ -129,6 +132,7 @@ const {
   getMissingDestinyIds: getMissingDestinyIdsImpl,
   weightedPick: weightedPickImpl,
   isDestinyOfferEligible: isDestinyOfferEligibleImpl,
+  getDestinyOfferQualityScore: getDestinyOfferQualityScoreImpl,
   getRandomDestinyOffers: getRandomDestinyOffersImpl,
   getAlignmentLabel: getAlignmentLabelImpl,
   formatResultLabel: formatResultLabelImpl,
@@ -264,6 +268,10 @@ function getMissingDestinyIds() {
 
 function getRandomDestinyOffers(count = 3) {
   return getRandomDestinyOffersImpl(metaState, state, count);
+}
+
+function getDestinyOfferQualityScore(offers = []) {
+  return getDestinyOfferQualityScoreImpl(offers);
 }
 
 function describeDestiny(id, alignment = destinyCatalog[id].alignment) {
@@ -1348,6 +1356,7 @@ function unlockSkill(gameState, id) {
       route: null,
       capstone: null,
       routePoints,
+      takenChoices: {},
       swarmVolleyBonus: 0,
       greatswordWidthBonus: 0,
       greatswordDurationBonus: 0,
@@ -1368,6 +1377,7 @@ function unlockSkill(gameState, id) {
       route: null,
       capstone: null,
       routePoints,
+      takenChoices: {},
       chainFocus: 0,
       chainRangeBonus: 0,
       chainNewTargetBias: 0,
@@ -1389,7 +1399,9 @@ function unlockSkill(gameState, id) {
       route: null,
       capstone: null,
       routePoints,
+      takenChoices: {},
       meteorFocus: 0,
+      meteorCountBonus: 0,
       meteorBurstBonus: 0,
       zoneFocus: 0,
       zoneRadiusBonus: 0,
@@ -1411,6 +1423,7 @@ function unlockSkill(gameState, id) {
       route: null,
       capstone: null,
       routePoints,
+      takenChoices: {},
       bulwarkFocus: 0,
       bulwarkLastStandCooldown: 0,
       counterFocus: 0,
@@ -1491,8 +1504,8 @@ const levelChoices = [
     id: "sword-swarm-1",
     name: "剑幕扩容",
     desc: "分路：剑潮流。御剑如潮，重在铺场清群，以连绵剑势压得敌阵难近身。",
-    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "sword", "swarm"),
-    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "sword", "swarm", (skill) => {
+    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "sword", "swarm", "sword-swarm-1", "intro"),
+    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "sword", "swarm", "sword-swarm-1", (skill) => {
       skill.projectiles += 2;
       skill.swarmVolleyBonus += 1;
     }),
@@ -1501,8 +1514,8 @@ const levelChoices = [
     id: "sword-swarm-2",
     name: "万刃同调",
     desc: "飞剑伤害 +10%，万剑归宗追加剑雨数量。",
-    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "sword", "swarm"),
-    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "sword", "swarm", (skill) => {
+    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "sword", "swarm", "sword-swarm-2", "followup"),
+    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "sword", "swarm", "sword-swarm-2", (skill) => {
       skill.damage *= 1.1;
       skill.swarmVolleyBonus += 2;
     }),
@@ -1511,8 +1524,8 @@ const levelChoices = [
     id: "sword-swarm-capstone",
     name: "万剑齐发",
     desc: "普攻飞剑数量永久 +2，主动技剑潮会瞬时铺满战场。",
-    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "sword", "swarm"),
-    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "sword", "swarm", (skill) => {
+    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "sword", "swarm", "sword-swarm-capstone"),
+    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "sword", "swarm", "sword-swarm-capstone", (skill) => {
       skill.projectiles += 2;
       skill.swarmVolleyBonus += 4;
     }),
@@ -1521,8 +1534,8 @@ const levelChoices = [
     id: "sword-great-1",
     name: "巨刃凝形",
     desc: "分路：大剑流。凝剑成阙，走的是少剑重斩的路数，专以沉重剑势镇压强敌。",
-    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "sword", "greatsword"),
-    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "sword", "greatsword", (skill) => {
+    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "sword", "greatsword", "sword-great-1", "intro"),
+    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "sword", "greatsword", "sword-great-1", (skill) => {
       skill.greatswordWidthBonus += 1;
       skill.damage *= 1.12;
     }),
@@ -1531,8 +1544,8 @@ const levelChoices = [
     id: "sword-great-2",
     name: "斩界延锋",
     desc: "巨阙镇场持续更久，并更擅长压制精英与 Boss。",
-    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "sword", "greatsword"),
-    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "sword", "greatsword", (skill) => {
+    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "sword", "greatsword", "sword-great-2", "followup"),
+    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "sword", "greatsword", "sword-great-2", (skill) => {
       skill.greatswordDurationBonus += 0.45;
       skill.greatswordPressureBonus += 0.18;
     }),
@@ -1541,8 +1554,8 @@ const levelChoices = [
     id: "sword-great-capstone",
     name: "巨阙镇场",
     desc: "巨剑更长、更久、更重，普攻重剑存在感也会同步抬高。",
-    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "sword", "greatsword"),
-    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "sword", "greatsword", (skill) => {
+    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "sword", "greatsword", "sword-great-capstone"),
+    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "sword", "greatsword", "sword-great-capstone", (skill) => {
       skill.damage *= 1.12;
       skill.greatswordWidthBonus += 1;
       skill.greatswordDurationBonus += 0.8;
@@ -1580,8 +1593,8 @@ const levelChoices = [
     id: "thunder-branch-chain-1",
     name: "引雷传导",
     desc: "分路：连锁流。雷意走脉成网，讲究追杀漏网与牵连群敌，让电光不断场。",
-    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "thunder", "chain"),
-    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "thunder", "chain", (skill) => {
+    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "thunder", "chain", "thunder-branch-chain-1", "intro"),
+    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "thunder", "chain", "thunder-branch-chain-1", (skill) => {
       skill.chain += 1;
       skill.chainFocus += 1;
       skill.chainRangeBonus += 22;
@@ -1591,8 +1604,8 @@ const levelChoices = [
     id: "thunder-branch-chain-2",
     name: "穿电成网",
     desc: "连锁更爱追新目标，目标不足时回跳衰减更平滑。",
-    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "thunder", "chain"),
-    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "thunder", "chain", (skill) => {
+    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "thunder", "chain", "thunder-branch-chain-2", "followup"),
+    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "thunder", "chain", "thunder-branch-chain-2", (skill) => {
       skill.chainFocus += 1;
       skill.chainRangeBonus += 30;
       skill.chainNewTargetBias += 1;
@@ -1602,8 +1615,8 @@ const levelChoices = [
     id: "thunder-chain-capstone",
     name: "连锁天雷",
     desc: "普攻链路再扩 2 跳，主动技追链更稳更快。",
-    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "thunder", "chain"),
-    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "thunder", "chain", (skill) => {
+    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "thunder", "chain", "thunder-chain-capstone"),
+    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "thunder", "chain", "thunder-chain-capstone", (skill) => {
       skill.chain += 2;
       skill.chainFocus += 1;
       skill.chainRangeBonus += 24;
@@ -1613,9 +1626,9 @@ const levelChoices = [
   {
     id: "thunder-branch-storm-1",
     name: "雷云积势",
-    desc: "分路：天罚流。引天威化雷池，重在定域轰杀，一旦开势便以雷幕接管战场。",
-    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "thunder", "storm"),
-    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "thunder", "storm", (skill) => {
+    desc: "锁定天罚流。主动技会留下一个雷池，持续落雷轰击范围内敌人，并延长雷池持续时间。",
+    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "thunder", "storm", "thunder-branch-storm-1", "intro"),
+    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "thunder", "storm", "thunder-branch-storm-1", (skill) => {
       skill.stormFocus += 1;
       skill.stormDurationBonus += 0.35;
     }),
@@ -1624,8 +1637,8 @@ const levelChoices = [
     id: "thunder-branch-storm-2",
     name: "千击雷幕",
     desc: "掌心雷·天罚落雷密度提高，并补强主动爆发。",
-    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "thunder", "storm"),
-    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "thunder", "storm", (skill) => {
+    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "thunder", "storm", "thunder-branch-storm-2", "followup"),
+    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "thunder", "storm", "thunder-branch-storm-2", (skill) => {
       skill.stormFocus += 1;
       skill.stormStrikeBonus += 1;
     }),
@@ -1634,8 +1647,8 @@ const levelChoices = [
     id: "thunder-storm-capstone",
     name: "九霄雷池",
     desc: "主动技拉成长驻雷池，区域统治和开窗爆发会明显抬高。",
-    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "thunder", "storm"),
-    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "thunder", "storm", (skill) => {
+    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "thunder", "storm", "thunder-storm-capstone"),
+    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "thunder", "storm", "thunder-storm-capstone", (skill) => {
       skill.stormFocus += 1;
       skill.stormDurationBonus += 1.2;
       skill.stormStrikeBonus += 2;
@@ -1672,8 +1685,8 @@ const levelChoices = [
     id: "flame-meteor-1",
     name: "灼骨",
     desc: "分路：爆落流。火势内敛藏锋，贴身焚骨，再以陨火坠地把近前敌人一并烧穿。",
-    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "flame", "meteor"),
-    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "flame", "meteor", (skill) => {
+    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "flame", "meteor", "flame-meteor-1", "intro"),
+    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "flame", "meteor", "flame-meteor-1", (skill) => {
       skill.damage *= 1.16;
       skill.meteorFocus += 1;
     }),
@@ -1682,8 +1695,8 @@ const levelChoices = [
     id: "flame-meteor-2",
     name: "薪火催燃",
     desc: "陨火天坠追加爆燃余波，并强化点燃收割。",
-    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "flame", "meteor"),
-    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "flame", "meteor", (skill) => {
+    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "flame", "meteor", "flame-meteor-2", "followup"),
+    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "flame", "meteor", "flame-meteor-2", (skill) => {
       skill.meteorFocus += 1;
       skill.meteorBurstBonus += 1;
       skill.burst = true;
@@ -1692,21 +1705,18 @@ const levelChoices = [
   {
     id: "flame-meteor-capstone",
     name: "烬狱轮转",
-    desc: "火环内圈进入高热杀区，贴脸时更容易把敌人直接烧穿。",
-    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "flame", "meteor"),
-    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "flame", "meteor", (skill) => {
-      skill.damage *= 1.18;
-      skill.meteorFocus += 1;
-      skill.meteorBurstBonus += 1;
-      skill.burst = true;
+    desc: "陨火天坠每波额外追加 2 颗陨石。",
+    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "flame", "meteor", "flame-meteor-capstone"),
+    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "flame", "meteor", "flame-meteor-capstone", (skill) => {
+      skill.meteorCountBonus += 2;
     }),
   },
   {
     id: "flame-zone-1",
     name: "焰域外推",
     desc: "分路：封区流。火环外扩成域，以留焰断路逼位，让敌人步步受炙、难越雷池。",
-    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "flame", "zone"),
-    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "flame", "zone", (skill) => {
+    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "flame", "zone", "flame-zone-1", "intro"),
+    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "flame", "zone", "flame-zone-1", (skill) => {
       skill.zoneFocus += 1;
       skill.zoneRadiusBonus += 24;
     }),
@@ -1715,8 +1725,8 @@ const levelChoices = [
     id: "flame-zone-2",
     name: "火幕成圏",
     desc: "留焰封区持续更久，减速更强。",
-    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "flame", "zone"),
-    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "flame", "zone", (skill) => {
+    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "flame", "zone", "flame-zone-2", "followup"),
+    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "flame", "zone", "flame-zone-2", (skill) => {
       skill.zoneFocus += 1;
       skill.zoneDurationBonus += 0.7;
       skill.zoneSlowBonus += 0.08;
@@ -1726,8 +1736,8 @@ const levelChoices = [
     id: "flame-zone-capstone",
     name: "焚身领域",
     desc: "火环半径永久扩大，主动技结束后仍会留下余焰继续封区。",
-    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "flame", "zone"),
-    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "flame", "zone", (skill) => {
+    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "flame", "zone", "flame-zone-capstone"),
+    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "flame", "zone", "flame-zone-capstone", (skill) => {
       skill.radius *= 1.4;
       skill.zoneFocus += 1;
       skill.zoneRadiusBonus += 16;
@@ -1768,8 +1778,8 @@ const levelChoices = [
     id: "guard-bulwark-1",
     name: "金城难破",
     desc: "分路：护体流。金钟覆体，重在镇退近身敌势与稳住场面，但主动技本身不拦远程攻势。",
-    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "guard", "bulwark"),
-    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "guard", "bulwark", (skill) => {
+    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "guard", "bulwark", "guard-bulwark-1", "intro"),
+    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "guard", "bulwark", "guard-bulwark-1", (skill) => {
       skill.baseMaxShield = (skill.baseMaxShield || skill.maxShield) * 1.18;
       skill.maxShield *= 1.18;
       skill.shield = Math.min(skill.maxShield, skill.shield + skill.maxShield * 0.35);
@@ -1780,8 +1790,8 @@ const levelChoices = [
     id: "guard-bulwark-2",
     name: "钟体回潮",
     desc: "金钟震荡后更快重整护体，护盾恢复节奏更强。",
-    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "guard", "bulwark"),
-    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "guard", "bulwark", (skill) => {
+    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "guard", "bulwark", "guard-bulwark-2", "followup"),
+    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "guard", "bulwark", "guard-bulwark-2", (skill) => {
       skill.recharge *= 0.86;
       skill.bulwarkFocus += 1;
     }),
@@ -1790,8 +1800,8 @@ const levelChoices = [
     id: "guard-bulwark-capstone",
     name: "不灭金钟",
     desc: "破盾后会强撑一口气并重整护体，主动技更像稳场重置按钮。",
-    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "guard", "bulwark"),
-    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "guard", "bulwark", (skill) => {
+    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "guard", "bulwark", "guard-bulwark-capstone"),
+    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "guard", "bulwark", "guard-bulwark-capstone", (skill) => {
       skill.baseMaxShield *= 1.15;
       skill.maxShield *= 1.15;
       skill.shield = skill.maxShield;
@@ -1802,8 +1812,8 @@ const levelChoices = [
     id: "guard-counter-1",
     name: "镜返",
     desc: "分路：弹反流。借敌势而鸣钟，主要反制远程与技能攻势，普通近身攻击不会被弹反。",
-    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "guard", "counter"),
-    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "guard", "counter", (skill) => {
+    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "guard", "counter", "guard-counter-1", "intro"),
+    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "guard", "counter", "guard-counter-1", (skill) => {
       skill.counterFocus += 1;
       skill.counterWindowBonus += 0.18;
     }),
@@ -1812,8 +1822,8 @@ const levelChoices = [
     id: "guard-counter-2",
     name: "钟鸣反震",
     desc: "返天钟鸣的弹道回击与近身反震更强。",
-    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "guard", "counter"),
-    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "guard", "counter", (skill) => {
+    canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "guard", "counter", "guard-counter-2", "followup"),
+    apply: (stateRef) => applySkillBranchUpgrade(stateRef, "guard", "counter", "guard-counter-2", (skill) => {
       skill.counterFocus += 1;
       skill.counterShockBonus += 1;
     }),
@@ -1822,8 +1832,8 @@ const levelChoices = [
     id: "guard-counter-capstone",
     name: "返天钟鸣",
     desc: "主动技窗口会被拉长，并显著抬高反震、反弹与借力反打收益。",
-    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "guard", "counter"),
-    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "guard", "counter", (skill) => {
+    canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "guard", "counter", "guard-counter-capstone"),
+    apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "guard", "counter", "guard-counter-capstone", (skill) => {
       skill.counterFocus += 1;
       skill.counterWindowBonus += 0.35;
       skill.counterShockBonus += 1;
@@ -1846,7 +1856,10 @@ function scoreChoice(choice, main) {
   const skillTag = getChoiceSkillTag(choice);
   const skill = skillTag ? state.player.skills[skillTag] : null;
   const routeMeta = getChoiceRouteMeta(choice);
-  if (choice.id.startsWith("new-") && state.player.skillOrder.length < 3) score += 3;
+  if (choice.id.startsWith("new-") && state.player.skillOrder.length < 3) {
+    score += 3;
+    score *= getTechniqueDestinySkillWeightMult(choice.id.replace("new-", ""));
+  }
   if (main && choice.id.includes(main)) score += 3;
   if (skillTag && state.player.skills[skillTag] && skillTag !== main) score += 2.5;
   if (routeMeta) {
@@ -1862,6 +1875,15 @@ function scoreChoice(choice, main) {
 function getChoiceSkillTag(choice) {
   const prefixes = ["sword", "thunder", "flame", "guard"];
   return prefixes.find((prefix) => choice.id === `new-${prefix}` || choice.id.startsWith(`${prefix}-`)) || null;
+}
+
+function getTechniqueDestinySkillWeightMult(skillId, stateRef = state, metaStateRef = metaState) {
+  if (!skillId || stateRef.player.skillOrder.length >= 3 || stateRef.player.skills[skillId]) return 1;
+  const configuredMult = BALANCE.destinyTable?.techniqueUnlearnedNewSkillWeightMult || 1;
+  return getEquippedDestinyEntriesImpl(metaStateRef).reduce((mult, entry) => {
+    if (entry.def?.category !== "skill-rewrite") return mult;
+    return TECHNIQUE_DESTINY_SKILL_MAP[entry.id] === skillId ? Math.max(mult, configuredMult) : mult;
+  }, 1);
 }
 
 function getChoiceRouteMeta(choice) {
@@ -2812,7 +2834,7 @@ function castActiveFlame(skill) {
   }
   const sacrificeBoost = getActiveSacrificeBoost();
   const capstoneMeteor = hasRouteCapstone("flame", skill, "meteor");
-  const meteorCount = 2 + level + (skill.meteorFocus || 0) + rewrite.meteorCountBonus;
+  const meteorCount = 2 + level + (skill.meteorFocus || 0) + (skill.meteorCountBonus || 0) + rewrite.meteorCountBonus;
   const waveCount = 3 + (hasGuardFocus() ? 1 : 0);
   const waveInterval = 0.7;
   const waveDuration = 0.7;
@@ -3333,6 +3355,7 @@ destinyFlow = createDestinyFlow({
   createDestinyPreviewSnapshot,
   describeDestinyStatDelta,
   getRandomDestinyOffers,
+  getDestinyOfferQualityScore,
   getEquippedDestinyEntries,
   getDestinyTierLabel: getDestinyTierLabelImpl,
   getDestinyWeight: getDestinyWeightImpl,
