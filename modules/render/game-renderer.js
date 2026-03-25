@@ -381,7 +381,7 @@
       const accent = palette.accent || "#fff4d6";
       const dx = effect.endX - effect.startX;
       const dy = effect.endY - effect.startY;
-      const length = Math.max(1, Math.hypot(dx, dy));
+      const length = Math.max(1, effect.bladeLength || Math.hypot(dx, dy));
       const alpha = clamp(effect.time / Math.max(0.01, effect.duration), 0, 1);
       const bladeWidth = effect.width * (1.78 + Math.sin(effect.oscillation) * 0.08);
 

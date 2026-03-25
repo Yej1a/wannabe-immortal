@@ -1430,3 +1430,19 @@ node --check modules/game-ui.js passed
     - boss 1 pulse = `50`
     - boss 2 teleport = `40`, projectile = `35 x 6`
     - boss 3 dash = `75`, shockwave = `50`, projectile = `40 x 4`
+
+2026-03-24 greatsword edge handling tweak
+
+- Adjusted `resolveGreatswordLane` so the greatsword active now only clamps the lane start point.
+- The lane end point is no longer clamped back into the arena, which means near-wall casts keep their intended forward length and get visually clipped by the arena boundary instead of being compressed shorter.
+- Verification:
+  - `node --check app.js`
+
+2026-03-24 greatsword visual length follow-up
+
+- Found a second place that could still make edge casts look shorter: the renderer recomputed greatsword visual length from `endX - startX`.
+- Changed the active effect to carry the intended lane length directly, and changed the renderer to prefer `effect.bladeLength` over recomputing from the current segment endpoints.
+- Result: greatsword visuals now follow the designed lane length, while the lane start still stays legal.
+- Verification:
+  - `node --check app.js`
+  - `node --check modules/render/game-renderer.js`

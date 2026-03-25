@@ -1069,13 +1069,14 @@ function resolveGreatswordLane(skill) {
     y: clamp(state.player.y + Math.sin(angle) * laneLead, 40, HEIGHT - 40),
   };
   const end = {
-    x: clamp(start.x + Math.cos(angle) * laneLength, 40, WIDTH - 40),
-    y: clamp(start.y + Math.sin(angle) * laneLength, 40, HEIGHT - 40),
+    x: start.x + Math.cos(angle) * laneLength,
+    y: start.y + Math.sin(angle) * laneLength,
   };
   return {
     start,
     end,
     angle,
+    length: laneLength,
     focus,
     priorityTarget,
   };
@@ -1724,25 +1725,21 @@ const levelChoices = [
   {
     id: "flame-zone-2",
     name: "火幕成圏",
-    desc: "留焰封区持续更久，减速更强。",
+    desc: "留焰封区半径进一步扩大。",
     canTake: (stateRef) => canTakeBranchUpgrade(stateRef, "flame", "zone", "flame-zone-2", "followup"),
     apply: (stateRef) => applySkillBranchUpgrade(stateRef, "flame", "zone", "flame-zone-2", (skill) => {
       skill.zoneFocus += 1;
-      skill.zoneDurationBonus += 0.7;
-      skill.zoneSlowBonus += 0.08;
+      skill.zoneRadiusBonus += 32;
     }),
   },
   {
     id: "flame-zone-capstone",
     name: "焚身领域",
-    desc: "火环半径永久扩大，主动技结束后仍会留下余焰继续封区。",
+    desc: "留焰封区半径大幅扩大，主动技结束后仍会留下余焰继续封区。",
     canTake: (stateRef) => canTakeCapstoneUpgrade(stateRef, "flame", "zone", "flame-zone-capstone"),
     apply: (stateRef) => applySkillCapstoneUpgrade(stateRef, "flame", "zone", "flame-zone-capstone", (skill) => {
-      skill.radius *= 1.4;
       skill.zoneFocus += 1;
-      skill.zoneRadiusBonus += 16;
-      skill.zoneDurationBonus += 1;
-      skill.zoneSlowBonus += 0.05;
+      skill.zoneRadiusBonus += 40;
     }),
   },
   {
@@ -2596,7 +2593,7 @@ function castActiveSword(skill) {
       targetY: lane.end.y,
       angle: lane.angle,
       width,
-      bladeLength: Math.hypot(lane.end.x - lane.start.x, lane.end.y - lane.start.y),
+      bladeLength: lane.length,
       duration,
       time: duration,
       tickTimer: 0.05,

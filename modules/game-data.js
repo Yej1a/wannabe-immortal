@@ -697,7 +697,7 @@
           capstoneName: "焚身领域",
           identityTags: ["封区", "留焰", "切战场", "持续压场"],
           activeClimaxText: "留焰封区切开战场",
-          graduationSummary: "火环外扩成持续火场，主动技结束后仍会留下余焰继续封路。",
+          graduationSummary: "主动技封区半径会越拉越大，毕业后还能在结束后留下余焰继续封路。",
           baseCooldown: ACTIVE_SKILL_BALANCE.flame?.baseCooldown || 13,
           vfx: {
             palette: {
